@@ -53,6 +53,46 @@ def save(nb, path):
 
 # ─── Shared content ───────────────────────────────────────────────────────────
 
+# GitHub repo the notebooks fetch their data from (public; data tracked with Git LFS)
+REPO   = "nikbaya/smartbiomed_practicals_2026"
+BRANCH = "main"
+
+
+def colab_badge(nb_path):
+    """Markdown 'Open in Colab' badge linking to nb_path within the repo."""
+    return ("[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)]"
+            f"(https://colab.research.google.com/github/{REPO}/blob/{BRANCH}/{nb_path})")
+
+
+def data_bootstrap(files):
+    """
+    Return code that locates data/ (../data or ./data) or, failing that (e.g. a fresh
+    Colab session), downloads the required files from the public GitHub repo.
+    LFS-tracked .npz are served via media.githubusercontent.com; plain files via raw.
+    Leaves DATA_DIR pointing at the directory that holds the files.
+    """
+    flist = ", ".join(repr(f) for f in files)
+    return f'''# Locate the data directory, downloading from GitHub if needed (e.g. on Colab).
+import os, urllib.request
+_NEED = [{flist}]
+_LFS  = {{'gwas_data.npz', 'sumstats_real.npz'}}   # tracked with Git LFS (media URL)
+def _has_all(d):
+    return d and all(os.path.exists(os.path.join(d, f)) for f in _NEED)
+DATA_DIR = next((d for d in ('../data', 'data') if _has_all(d)), None)
+if DATA_DIR is None:
+    DATA_DIR = 'data'; os.makedirs(DATA_DIR, exist_ok=True)
+    for _f in _NEED:
+        _dest = os.path.join(DATA_DIR, _f)
+        if os.path.exists(_dest):
+            continue
+        _base = ('https://media.githubusercontent.com/media' if _f in _LFS
+                 else 'https://raw.githubusercontent.com')
+        _url = f'{{_base}}/{REPO}/{BRANCH}/data/{{_f}}'
+        print(f'Downloading {{_f}} from GitHub ...')
+        urllib.request.urlretrieve(_url, _dest)
+'''
+
+
 IMPORTS = """\
 import os
 import numpy as np
@@ -63,7 +103,7 @@ from scipy import stats, special
 import warnings
 warnings.filterwarnings('ignore')
 
-plt.rcParams.update({'figure.dpi': 100, 'font.size': 11})
+plt.rcParams.update({'figure.dpi': 80, 'font.size': 11})
 print("Libraries loaded.")
 """
 
@@ -198,12 +238,9 @@ from scipy import stats, special
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import warnings; warnings.filterwarnings('ignore')
-plt.rcParams.update({'figure.dpi': 100, 'font.size': 11})
+plt.rcParams.update({'figure.dpi': 80, 'font.size': 11})
 
-# Try to find the data directory (works in Colab after cloning the repo)
-_here = os.path.abspath('') if '__file__' not in dir() else os.path.dirname(__file__)
-DATA_DIR = os.path.join(_here, '..', 'data')
-
+""" + data_bootstrap(['gwas_data.npz', 'fly_data.csv']) + """
 if os.path.exists(os.path.join(DATA_DIR, 'gwas_data.npz')):
     print("Loading pre-generated GWAS data...")
     d = np.load(os.path.join(DATA_DIR, 'gwas_data.npz'), allow_pickle=True)
@@ -244,15 +281,13 @@ from scipy import stats, special
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import warnings; warnings.filterwarnings('ignore')
-plt.rcParams.update({'figure.dpi': 100, 'font.size': 11})
+plt.rcParams.update({'figure.dpi': 80, 'font.size': 11})
 
-_here = os.path.abspath('') if '__file__' not in dir() else os.path.dirname(__file__)
-DATA_DIR = os.path.join(_here, '..', 'data')
-
+""" + data_bootstrap(['gwas_data.npz', 'fly_data.csv']) + """
 if not os.path.exists(os.path.join(DATA_DIR, 'gwas_data.npz')):
     raise FileNotFoundError(
-        "Data files not found in ../data/ — make sure you have cloned the full "
-        "repository and that the data/ folder is present. Ask your instructor if unsure."
+        "Could not find or download gwas_data.npz. Check your internet connection "
+        "(the notebook downloads data from GitHub on first run), or ask your instructor."
     )
 
 print("Loading pre-generated GWAS data...")
@@ -1060,8 +1095,72 @@ for ax, j, title in zip(axes, [dom_idx_qc, rec_idx_qc], ['True dominant locus', 
 plt.tight_layout(); plt.show()
 """
 
+S1_LZ_MD = """\
+### Challenge 2: Manual LocusZoom plot
+
+A **LocusZoom plot** shows $-\\log_{10}(p)$ vs. position for a region around a hit, with points
+**coloured by LD** ($r^2$) with the lead variant. It reveals the LD structure that produces the
+"tower" you'll see in a Manhattan plot (Session 2) — neighbouring variants are associated only
+because they are correlated with the causal one.
+
+We use the covariate-adjusted continuous-trait GWAS (`pvals_cov`) and the genotypes `G_qc`.
+"""
+
+S1_LZ_STUDENT = """\
+# Challenge 2: Manual LocusZoom plot for the lead locus (continuous trait)
+
+# Region: ±1 Mb around the lead variant
+j_lead    = np.argmin(pvals_cov)
+pos_lead  = pos_qc[j_lead]
+region_mask = np.abs(pos_qc - pos_lead) < 1000   # ±1000 kbp = ±1 Mb
+
+print(f"Lead variant: {rsids_qc[j_lead]}  pos={pos_lead:,} kbp  p={pvals_cov[j_lead]:.2e}")
+print(f"Variants in region: {region_mask.sum():,}")
+
+# YOUR CODE HERE
+# Compute r² between each variant in the region and the lead variant.
+# Hint: r = np.corrcoef(g_lead, G_qc[:, k])[0,1]; r² = r**2
+g_lead = G_qc[:, j_lead]
+r2 = ???    # shape (region_mask.sum(),)
+
+cmap = plt.cm.RdYlBu_r   # red = high LD, blue = low LD
+norm = mcolors.Normalize(vmin=0, vmax=1)
+fig, ax = plt.subplots(figsize=(12, 4))
+sc = ax.scatter(pos_qc[region_mask] / 1000,
+                -np.log10(pvals_cov[region_mask] + 1e-300),
+                c=r2, cmap=cmap, norm=norm, s=20, zorder=3)
+ax.scatter([pos_lead/1000], [-np.log10(pvals_cov[j_lead]+1e-300)],
+           s=100, marker='D', color='black', zorder=5, label='Lead SNP')
+plt.colorbar(sc, ax=ax, label=r'$r^2$ with lead SNP')
+ax.axhline(-np.log10(5e-8), color='red', linestyle='--', linewidth=1, label='5×10⁻⁸')
+ax.set_xlabel('Position on chr1 (Mb)'); ax.set_ylabel(r'$-\\log_{10}(p)$')
+ax.set_title('LocusZoom: lead locus on chr1 (±1 Mb)')
+ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+print("Q: Do the high-r² (red) variants form the tower? What happens to p as r² drops?")
+"""
+
+S1_LZ_SOL = """\
+j_lead = np.argmin(pvals_cov); pos_lead = pos_qc[j_lead]
+region_mask = np.abs(pos_qc - pos_lead) < 1000
+g_lead = G_qc[:, j_lead]
+G_region = G_qc[:, region_mask]
+r2 = np.array([np.corrcoef(g_lead, G_region[:, k])[0,1]**2 for k in range(G_region.shape[1])])
+
+cmap = plt.cm.RdYlBu_r; norm = mcolors.Normalize(vmin=0, vmax=1)
+fig, ax = plt.subplots(figsize=(12, 4))
+sc = ax.scatter(pos_qc[region_mask]/1000, -np.log10(pvals_cov[region_mask]+1e-300),
+                c=r2, cmap=cmap, norm=norm, s=20, zorder=3)
+ax.scatter([pos_lead/1000], [-np.log10(pvals_cov[j_lead]+1e-300)],
+           s=100, marker='D', color='black', zorder=5, label='Lead SNP')
+plt.colorbar(sc, ax=ax, label=r'$r^2$ with lead SNP')
+ax.axhline(-np.log10(5e-8), color='red', linestyle='--', linewidth=1)
+ax.set_xlabel('Position on chr1 (Mb)'); ax.set_ylabel(r'$-\\log_{10}(p)$')
+ax.set_title('LocusZoom: lead locus (±1 Mb)'); ax.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+"""
+
 S1_CQ2_MD = """\
-### Challenge 2: Drosophila Linkage Analysis (Hard!)
+### Challenge 3: Drosophila Linkage Analysis (Hard!)
 
 *(Inspired by Sturtevant, 1913 — the first genetic map.)*
 
@@ -1216,7 +1315,7 @@ S2_TITLE = """\
 LDL cholesterol (continuous), chronic ischaemic heart disease (binary), and standing height
 (highly polygenic) — for the Manhattan, QQ, trumpet and pleiotropy plots. The setup cell also
 re-runs the Session 1 *simulated* GWAS, which we still use for the analyses that need
-individual-level genotypes (null-QQ contrast, winner's curse, LocusZoom).
+individual-level genotypes (null-QQ contrast, winner's curse).
 
 **Setup**: Run the setup cell once at the top (loads real sumstats + re-runs the simulated
 GWAS, ~30s) before any exercises.
@@ -1235,9 +1334,9 @@ LOAD_REAL_SUMSTATS = """\
 #   sig  = genome-wide significant (p < 5e-8); rand = unbiased random subset for QQ/lambda.
 _real_path = os.path.join(DATA_DIR, 'sumstats_real.npz')
 if not os.path.exists(_real_path):
-    raise FileNotFoundError(
-        "data/sumstats_real.npz not found. Run `python fetch_sumstats.py` to download and "
-        "thin the Pan-UKB summary statistics (instructors), or re-clone the repo (students).")
+    _url = f'https://media.githubusercontent.com/media/{REPO_SLUG}/{BRANCH_NAME}/data/sumstats_real.npz'
+    print('Downloading sumstats_real.npz from GitHub ...')
+    import urllib.request; urllib.request.urlretrieve(_url, _real_path)
 _rs = np.load(_real_path, allow_pickle=True)
 REAL_TRAITS = ['ldl', 'cad', 'height']
 REAL_LABELS = {'ldl': 'LDL direct (continuous)',
@@ -1252,7 +1351,16 @@ for _t in REAL_TRAITS:
     d = real[_t]
     print(f"  {_t:6s} ({REAL_LABELS[_t]}): {len(d['pos']):,} SNPs  "
           f"({int(d['sig'].sum()):,} genome-wide sig, {int(d['rand'].sum()):,} in QQ subset)")
+
+def _thin(n, k=12000, seed=0):
+    \"\"\"Index subset of size <=k for plotting only (keeps figures/notebooks small).\"\"\"
+    return (np.arange(n) if n <= k
+            else np.random.default_rng(seed).choice(n, k, replace=False))
 """
+# Bake the repo/branch into the download URL (tokens are unique; other {…} untouched).
+LOAD_REAL_SUMSTATS = (LOAD_REAL_SUMSTATS
+                      .replace('{REPO_SLUG}', REPO)
+                      .replace('{BRANCH_NAME}', BRANCH))
 
 S2_SETUP = LOAD_DATA.replace(
     "print(f\"\\nReady: N={N:,} samples, M_raw={M_raw:,} variants (pre-QC)\")",
@@ -1415,7 +1523,8 @@ def manhattan_plot(chrom, pos, nlog10p, title='Manhattan plot', ax=None, thresh_
         if not m.any():
             continue
         x[m] = pos[m] + offset
-        ax.scatter(x[m], y[m], s=2, alpha=0.6, color=shades[c % 2], rasterized=True)
+        mi = np.where(m)[0]; sel = mi[_thin(len(mi), k=2500, seed=c)]   # thin for display
+        ax.scatter(x[sel], y[sel], s=2, alpha=0.6, color=shades[c % 2], rasterized=True)
         cmax = pos[m].max()
         xticks.append(offset + cmax / 2); xlabels.append(str(c))
         offset += cmax
@@ -1497,7 +1606,8 @@ def qq_plot(nlog10p, label='', ax=None, color='steelblue'):
     n = len(nlog10p)
     obs = np.sort(nlog10p)                       # ascending observed -log10(p)
     exp = -np.log10(np.arange(n, 0, -1) / (n + 1))  # ascending expected -log10(p)
-    ax.scatter(exp, obs, s=2, alpha=0.6, color=color, label=label)
+    d = np.unique(np.r_[_thin(n, k=6000), np.where(obs >= 2)[0]])  # thin bulk, keep tail
+    ax.scatter(exp[d], obs[d], s=2, alpha=0.6, color=color, label=label)
     exp_max = -np.log10(1.0 / (n + 1))
     ax.plot([0, exp_max], [0, exp_max], 'r--', linewidth=1.2, label='y=x (null)')
     ax.set_xlim(0, exp_max)
@@ -1595,8 +1705,10 @@ trait_pairs = [('ldl', 'cad'), ('ldl', 'height'), ('cad', 'height')]
 for ax, (ta, tb) in zip(axes, trait_pairs):
     ba, bb, sa, sb, n_common = merge_betas(ta, tb)
     sig = sa | sb
-    ax.scatter(ba[~sig], bb[~sig], s=2, alpha=0.1, color='grey', rasterized=True)
-    ax.scatter(ba[sig],  bb[sig],  s=12, alpha=0.6, color='#e15759', zorder=5,
+    ns = np.where(~sig)[0]; ns = ns[_thin(len(ns), k=8000)]   # thin grey cloud for display
+    ax.scatter(ba[ns], bb[ns], s=2, alpha=0.1, color='grey', rasterized=True)
+    si = np.where(sig)[0]; si = si[_thin(len(si), k=6000, seed=2)]   # thin significant pts
+    ax.scatter(ba[si],  bb[si],  s=12, alpha=0.6, color='#e15759', zorder=5,
                label=f'sig in either (n={int(sig.sum()):,})')
     ax.axhline(0, color='black', lw=0.5); ax.axvline(0, color='black', lw=0.5)
     ax.set_xlabel(f'beta — {ta}'); ax.set_ylabel(f'beta — {tb}')
@@ -1665,6 +1777,8 @@ def qq_plot_ci(nlog10p, ax=None, color='steelblue', ci_alpha=0.05, label=''):
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 5))
     n = len(nlog10p); obs = np.sort(nlog10p); ks = np.arange(n, 0, -1)
+    d = np.unique(np.r_[_thin(n, k=4000), np.where(obs >= 2)[0]])   # thin bulk, keep tail
+    obs, ks = obs[d], ks[d]
     exp_med  = stats.beta.ppf(0.5, ks, n-ks+1)
     ci_lower = stats.beta.ppf(ci_alpha/2, ks, n-ks+1)
     ci_upper = stats.beta.ppf(1 - ci_alpha/2, ks, n-ks+1)
@@ -1730,7 +1844,8 @@ for (lo, hi), col in zip(maf_bins, colours):
         continue
     obs = np.sort(nlp_h[mask]); m = len(obs)
     exp = -np.log10(np.arange(m, 0, -1) / (m + 1))
-    ax.scatter(exp, obs, s=3, alpha=0.5, color=col, label=f'MAF [{lo:.1%}, {hi:.0%})')
+    d = np.unique(np.r_[_thin(m, k=4000, seed=int(lo*1000)), np.where(obs >= 2)[0]])
+    ax.scatter(exp[d], obs[d], s=3, alpha=0.5, color=col, label=f'MAF [{lo:.1%}, {hi:.0%})')
     exp_max = max(exp_max, exp.max())
 ax.plot([0, exp_max], [0, exp_max], 'k--', linewidth=1); ax.set_xlim(0, exp_max)
 ax.set_title('MAF-stratified QQ plot — real height GWAS')
@@ -1803,10 +1918,11 @@ sig_l, rnd_l  = real['ldl']['sig'], real['ldl']['rand']
 maf_grid = np.logspace(np.log10(0.005), np.log10(0.5), 300)
 
 fig, ax = plt.subplots(figsize=(9, 6))
-bg = rnd_l & ~sig_l
-ax.scatter(maf_l[bg], beta_l[bg], s=1, alpha=0.15, color='grey', rasterized=True)
-ax.scatter(maf_l[sig_l], beta_l[sig_l], s=10, alpha=0.6,
-           c=np.sign(beta_l[sig_l]), cmap='coolwarm', vmin=-1, vmax=1, zorder=5, label='p<5e-8')
+bgi = np.where(rnd_l & ~sig_l)[0]; bgi = bgi[_thin(len(bgi), k=8000)]   # thin background
+ax.scatter(maf_l[bgi], beta_l[bgi], s=1, alpha=0.15, color='grey', rasterized=True)
+si = np.where(sig_l)[0]; si = si[_thin(len(si), k=6000, seed=1)]        # thin significant pts
+ax.scatter(maf_l[si], beta_l[si], s=10, alpha=0.6,
+           c=np.sign(beta_l[si]), cmap='coolwarm', vmin=-1, vmax=1, zorder=5, label='p<5e-8')
 for n_s, col in [(10_000,'#e15759'),(100_000,'#f28e2b'),(400_000,'#59a14f')]:
     pb = power_curve(n_s, maf_grid)
     ax.plot(maf_grid, +pb, color=col, linewidth=1.5, label=f'N={n_s:,}')
@@ -1821,86 +1937,115 @@ plt.tight_layout(); plt.show()
 S2_CQ4_MD = """\
 ### Challenge 4: Winner's curse
 
-The **winner's curse**: effect size estimates for discovered variants are upward-biased
+The **winner's curse**: effect size estimates for discovered variants are upward-biased,
 because a variant is only 'discovered' when its estimated effect happens to be large enough
-to cross the significance threshold. The fix is to estimate the effect in an *independent*
-replication sample.
+to cross the significance threshold. The honest effect is what you'd get in *independent*
+replication samples.
 
-This needs individual-level genotypes, so we go back to the **simulated cohort**:
-1. Take a 2,000-individual **discovery** subset, run GWAS, identify significant hits.
-2. Run GWAS in the **disjoint 8,000-individual replication** sample (the complement — no
-   overlap with discovery), restricted to those hits.
-3. Compare discovery vs replication effect sizes. Because the replication sample is
-   independent, regression to the mean exposes the inflation.
+This needs individual-level genotypes, so we use the **simulated cohort**:
+1. Take a 2,000-individual **discovery** subset, run GWAS, identify the significant hit(s).
+2. Form the **disjoint 8,000-individual** replication pool (the complement).
+3. **Bootstrap-resample** the 8,000 pool 100 times; each time re-estimate the hit's effect.
+   This gives a *distribution* of honest replication effect sizes for the discovered hit.
+4. Compare the discovery point estimate to that distribution: if it sits in the upper tail, the
+   discovery estimate was inflated (winner's curse). A strongly-powered hit well above the
+   threshold may sit mid-distribution — the curse mainly bites variants that *just* cross it.
 """
 
 S2_CQ4_STUDENT = """\
-# Challenge 4: Winner's curse — discovery (2k) vs disjoint replication (8k)
-np.random.seed(42)
+# Challenge 4: Winner's curse — 100x bootstrap of the disjoint 8k replication pool
+rng = np.random.default_rng(42)
 n_sub   = 2000
-all_idx = np.arange(N)
-sub_idx = np.sort(np.random.choice(N, n_sub, replace=False))     # discovery
-rep_idx = np.setdiff1d(all_idx, sub_idx)                          # disjoint replication (8k)
-
+sub_idx = np.sort(rng.choice(N, n_sub, replace=False))   # discovery
+rep_idx = np.setdiff1d(np.arange(N), sub_idx)            # disjoint replication pool (8k)
 cov_sub = np.column_stack([(age[sub_idx]-age.mean())/age.std(), sex[sub_idx]])
-cov_rep = np.column_stack([(age[rep_idx]-age.mean())/age.std(), sex[rep_idx]])
 
-# YOUR CODE HERE
-# Run the discovery GWAS on the 2k subset
-betas_sub, _, pvals_sub = run_gwas(???, ???, ???)
-
-# Identify hits in the discovery GWAS (try 5e-8, fall back to 1e-5)
-hit_idx = np.where(pvals_sub < 5e-8)[0]
+# Discovery GWAS on the 2k subset
+betas_disc, _, pvals_disc = run_gwas(y_cont[sub_idx], G_qc[sub_idx], cov_sub)
+hit_idx = np.where(pvals_disc < 5e-8)[0]
 if len(hit_idx) == 0:
-    hit_idx = np.where(pvals_sub < 1e-5)[0]
+    hit_idx = np.where(pvals_disc < 1e-5)[0]
 print(f"Discovery hits: {len(hit_idx)}")
 
-if len(hit_idx) > 0:
-    # YOUR CODE HERE: run GWAS in the disjoint replication sample, then read off
-    # the replication effect sizes AT THE DISCOVERY HITS
-    betas_rep, _, _ = run_gwas(???, ???, ???)
-    beta_disc = betas_sub[hit_idx]
-    beta_rep  = betas_rep[hit_idx]
+# Bootstrap the 8k pool 100x, re-estimating the hit effects each time (hit columns only = fast)
+B = 100
+Ghit = G_qc[:, hit_idx]
+boot = np.empty((B, len(hit_idx)))
+for b in range(B):
+    bs = rng.choice(rep_idx, len(rep_idx), replace=True)   # resample 8k WITH replacement
+    cov_bs = np.column_stack([(age[bs]-age.mean())/age.std(), sex[bs]])
+    # YOUR CODE HERE: GWAS of y_cont on the hit columns in this bootstrap sample
+    bb, _, _ = run_gwas(???, ???, ???)
+    boot[b] = bb
 
-    fig, ax = plt.subplots(figsize=(5, 5))
-    ax.scatter(np.abs(beta_disc), np.abs(beta_rep), alpha=0.7, s=40)
-    lim = max(np.abs(beta_disc).max(), np.abs(beta_rep).max()) * 1.1
-    ax.plot([0, lim], [0, lim], 'r--', linewidth=1)
-    ax.set_xlabel('|beta| — discovery (N=2,000)')
-    ax.set_ylabel('|beta| — replication (disjoint N=8,000)')
-    ax.set_title("Winner's curse: discovery vs independent replication")
-    plt.tight_layout(); plt.show()
+beta_disc = betas_disc[hit_idx]
+# How often does a resample reach the discovery effect magnitude?
+frac_reaching = (np.abs(boot) >= np.abs(beta_disc)).mean(0)
+for j, h in enumerate(hit_idx):
+    print(f"  hit {rsids_qc[h]}: discovery b={beta_disc[j]:+.3f}, "
+          f"replication mean b={boot[:,j].mean():+.3f}, "
+          f"|disc| reached in {frac_reaching[j]:.0%} of 100 resamples")
 
-    pct_shrunk = (np.abs(beta_rep) < np.abs(beta_disc)).mean()
-    print(f"Fraction of hits with smaller effect in replication: {pct_shrunk:.0%}")
-    print("Q: Why is an INDEPENDENT replication sample essential to see this honestly?")
+# Distribution of the 100 resampled effect sizes for each hit, with the discovery estimate marked
+nh = len(hit_idx)
+fig, axes = plt.subplots(1, nh, figsize=(4.5*nh, 4), squeeze=False)
+for j in range(nh):
+    ax = axes[0, j]
+    ax.hist(boot[:, j], bins=20, color='steelblue', edgecolor='white', linewidth=0.4)
+    ax.axvline(beta_disc[j],      color='red',   lw=2, label='discovery (2k) estimate')
+    ax.axvline(boot[:, j].mean(), color='black', lw=1.5, ls='--', label='replication mean')
+    ax.set_title(f'{rsids_qc[hit_idx[j]]}  (|disc| reached {frac_reaching[j]:.0%})', fontsize=10)
+    ax.set_xlabel(r'$\\hat{\\beta}$ in 8k bootstrap')
+    if j == 0:
+        ax.set_ylabel('resamples (of 100)'); ax.legend(fontsize=8)
+plt.suptitle("Winner's curse: discovery estimate vs 8k replication bootstrap distribution", y=1.02)
+plt.tight_layout(); plt.show()
+print("Q: Does the discovery estimate sit in the upper tail of the replication distribution?")
+print("   (A hit far above the 5e-8 threshold may not — the curse mainly bites marginal hits.)")
 """
 
 S2_CQ4_SOL = """\
-np.random.seed(42)
-n_sub = 2000; all_idx = np.arange(N)
-sub_idx = np.sort(np.random.choice(N, n_sub, replace=False))
-rep_idx = np.setdiff1d(all_idx, sub_idx)
+rng = np.random.default_rng(42)
+n_sub   = 2000
+sub_idx = np.sort(rng.choice(N, n_sub, replace=False))
+rep_idx = np.setdiff1d(np.arange(N), sub_idx)
 cov_sub = np.column_stack([(age[sub_idx]-age.mean())/age.std(), sex[sub_idx]])
-cov_rep = np.column_stack([(age[rep_idx]-age.mean())/age.std(), sex[rep_idx]])
 
-betas_sub, _, pvals_sub = run_gwas(y_cont[sub_idx], G_qc[sub_idx], cov_sub)
-hit_idx = np.where(pvals_sub < 5e-8)[0]
-if len(hit_idx) == 0: hit_idx = np.where(pvals_sub < 1e-5)[0]
+betas_disc, _, pvals_disc = run_gwas(y_cont[sub_idx], G_qc[sub_idx], cov_sub)
+hit_idx = np.where(pvals_disc < 5e-8)[0]
+if len(hit_idx) == 0: hit_idx = np.where(pvals_disc < 1e-5)[0]
 print(f"Discovery hits: {len(hit_idx)}")
-if len(hit_idx) > 0:
-    betas_rep, _, _ = run_gwas(y_cont[rep_idx], G_qc[rep_idx], cov_rep)
-    beta_disc = betas_sub[hit_idx]; beta_rep = betas_rep[hit_idx]
-    fig, ax = plt.subplots(figsize=(5,5))
-    ax.scatter(np.abs(beta_disc), np.abs(beta_rep), alpha=0.7, s=40)
-    lim = max(np.abs(beta_disc).max(), np.abs(beta_rep).max())*1.1
-    ax.plot([0,lim],[0,lim],'r--')
-    ax.set_xlabel('|beta| discovery (N=2,000)')
-    ax.set_ylabel('|beta| replication (disjoint N=8,000)')
-    ax.set_title("Winner's curse"); plt.tight_layout(); plt.show()
-    print(f"Fraction shrunk in replication: {(np.abs(beta_rep) < np.abs(beta_disc)).mean():.0%}")
-    print(f"Mean |beta| discovery={np.abs(beta_disc).mean():.4f}, "
-          f"replication={np.abs(beta_rep).mean():.4f}")
+
+B = 100
+Ghit = G_qc[:, hit_idx]
+boot = np.empty((B, len(hit_idx)))
+for b in range(B):
+    bs = rng.choice(rep_idx, len(rep_idx), replace=True)
+    cov_bs = np.column_stack([(age[bs]-age.mean())/age.std(), sex[bs]])
+    bb, _, _ = run_gwas(y_cont[bs], Ghit[bs], cov_bs)
+    boot[b] = bb
+
+beta_disc = betas_disc[hit_idx]
+frac_reaching = (np.abs(boot) >= np.abs(beta_disc)).mean(0)
+for j, h in enumerate(hit_idx):
+    print(f"  hit {rsids_qc[h]}: discovery b={beta_disc[j]:+.3f}, "
+          f"replication mean b={boot[:,j].mean():+.3f}, "
+          f"|disc| reached in {frac_reaching[j]:.0%} of 100 resamples")
+
+nh = len(hit_idx)
+fig, axes = plt.subplots(1, nh, figsize=(4.5*nh, 4), squeeze=False)
+for j in range(nh):
+    ax = axes[0, j]
+    ax.hist(boot[:, j], bins=20, color='steelblue', edgecolor='white', linewidth=0.4)
+    ax.axvline(beta_disc[j],      color='red',   lw=2, label='discovery (2k) estimate')
+    ax.axvline(boot[:, j].mean(), color='black', lw=1.5, ls='--', label='replication mean')
+    ax.set_title(f'{rsids_qc[hit_idx[j]]}  (|disc| reached {frac_reaching[j]:.0%})', fontsize=10)
+    ax.set_xlabel(r'$\\hat{\\beta}$ in 8k bootstrap')
+    if j == 0:
+        ax.set_ylabel('resamples (of 100)'); ax.legend(fontsize=8)
+plt.suptitle("Winner's curse: discovery estimate vs 8k replication bootstrap distribution", y=1.02)
+plt.tight_layout(); plt.show()
+# A hit far above 5e-8 sits mid-distribution (little curse); marginal hits sit in the upper tail.
 """
 
 S2_CQ6_MD = """\
@@ -2016,10 +2161,11 @@ plt.tight_layout(); plt.show()
 
 # ─── Assemble notebooks ───────────────────────────────────────────────────────
 
-def build_session1(answers=False, run=False):
+def build_session1(answers=False, run=False, nb_path=None):
     """
     answers=True  → student cell + collapsed solution cell (for students to reveal)
     run=True      → solution code only, no student cells (instructor-executable)
+    nb_path       → repo path of this notebook, used for the Open-in-Colab badge
     """
     def ex(student_src, sol_src):
         if run:
@@ -2029,8 +2175,9 @@ def build_session1(answers=False, run=False):
             cells.append(solution(sol_src))
         return cells
 
+    title = (colab_badge(nb_path) + "\n\n" + S1_TITLE) if nb_path else S1_TITLE
     cells = [
-        md(S1_TITLE),
+        md(title),
         code(IMPORTS),
         code(LOAD_DATA if (answers or run) else LOAD_DATA_STUDENT),
         code(S1_PHENOTYPE_PLOTS),
@@ -2051,6 +2198,8 @@ def build_session1(answers=False, run=False):
         md(S1_CQ_MD),
         md(S1_CQ1_MD),
         *ex(S1_CQ1_STUDENT, S1_CQ1_SOL),
+        md(S1_LZ_MD),
+        *ex(S1_LZ_STUDENT, S1_LZ_SOL),
         md(S1_CQ2_MD),
         code(S1_CQ2_STUDENT) if not run else md(""),
         *ex(S1_CQ2B_STUDENT, S1_CQ2B_SOL),
@@ -2061,7 +2210,7 @@ def build_session1(answers=False, run=False):
     return notebook(cells)
 
 
-def build_session2(answers=False, run=False):
+def build_session2(answers=False, run=False, nb_path=None):
     def ex(student_src, sol_src):
         if run:
             return [code(sol_src)]
@@ -2070,8 +2219,9 @@ def build_session2(answers=False, run=False):
             cells.append(solution(sol_src))
         return cells
 
+    title = (colab_badge(nb_path) + "\n\n" + S2_TITLE) if nb_path else S2_TITLE
     cells = [
-        md(S2_TITLE),
+        md(title),
         code(S2_SETUP if (answers or run) else S2_SETUP_STUDENT),
         md(S2_PART1_MD),
         *ex(S2_EX11_STUDENT, S2_EX11_SOL),
@@ -2091,8 +2241,6 @@ def build_session2(answers=False, run=False):
         *ex(S2_CQ4_STUDENT, S2_CQ4_SOL),
         md(S2_CQ6_MD),
         code(S2_CQ6_STUDENT) if not run else md(""),
-        md(S2_CQ7_MD),
-        *ex(S2_CQ7_STUDENT, S2_CQ7_SOL),
     ]
     return notebook(cells)
 
@@ -2102,10 +2250,10 @@ def build_session2(answers=False, run=False):
 if __name__ == "__main__":
     BASE = os.path.dirname(os.path.abspath(__file__))
     print("Generating notebooks...")
-    save(build_session1(answers=False), os.path.join(BASE, "session1", "practical.ipynb"))
-    save(build_session1(answers=True),  os.path.join(BASE, "session1", "answers.ipynb"))
-    save(build_session1(run=True),      os.path.join(BASE, "session1", "run.ipynb"))
-    save(build_session2(answers=False), os.path.join(BASE, "session2", "practical.ipynb"))
-    save(build_session2(answers=True),  os.path.join(BASE, "session2", "answers.ipynb"))
-    save(build_session2(run=True),      os.path.join(BASE, "session2", "run.ipynb"))
+    save(build_session1(answers=False, nb_path="session1/practical.ipynb"), os.path.join(BASE, "session1", "practical.ipynb"))
+    save(build_session1(answers=True,  nb_path="session1/answers.ipynb"),   os.path.join(BASE, "session1", "answers.ipynb"))
+    save(build_session1(run=True,      nb_path="session1/run.ipynb"),       os.path.join(BASE, "session1", "run.ipynb"))
+    save(build_session2(answers=False, nb_path="session2/practical.ipynb"), os.path.join(BASE, "session2", "practical.ipynb"))
+    save(build_session2(answers=True,  nb_path="session2/answers.ipynb"),   os.path.join(BASE, "session2", "answers.ipynb"))
+    save(build_session2(run=True,      nb_path="session2/run.ipynb"),       os.path.join(BASE, "session2", "run.ipynb"))
     print("Done. 6 notebooks written.")

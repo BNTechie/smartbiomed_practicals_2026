@@ -64,14 +64,18 @@ MORNING (Nik)
 - Practical (implemented in `session1/`)
   - Run simple regression on a pre-generated simulated toy dataset (~105k variants on chr1, 10k samples of homogeneous ancestry; provided to students as `data/gwas_data.npz`).
     - Genotypes simulated with block-LD structure (not a 1000G matrix); MAF 0.5–50% with ~3k injected rare variants (0.1–1%) so students must do MAF QC; plus injected HWE failures and missingness tiers.
-    - Continuous trait `y_cont`: low h² (≈0.035), spike-and-slab with only **3** causal variants, MAF-dependent effect sizes (no large-effect common variants), plus one injected **dominant** and one **recessive** locus.
+    - Continuous trait `y_cont`: low h² (≈0.035), spike-and-slab with only **3** causal variants, MAF-dependent effect sizes (no large-effect common variants), plus one injected **dominant** and one **recessive** locus. Flip effect in one causal SNP between sexes, to simulate sex-specific effect.
     - Dichotomous trait `y_bin`: liability-threshold model on `y_cont`, ~10% prevalence (90th percentile).
     - Third trait `y_poly`: fully polygenic, very low h² (≈0.02), **uncorrelated** with `y_cont` (used in Session 2 pleiotropy/h² discussion).
     - Covariates: UKB-like age distribution (decile-interpolated, ~37–87) and sex.
   - Challenge questions:
-    - Plot phenotype/covariate distributions; decide what covariates to include.
-    - How would you test for dominant or recessive effects? (A: re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS; find the two injected non-additive loci.)
+    - (easy) Plot phenotype/covariate distributions. 
+    - (medium) How would you test for dominant or recessive effects? (A: re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS; find the two injected non-additive loci.)
     - (Hard) Run linkage analysis on simulated fruit-fly data as if you were Sturtevant in 1913. First determine which phenotypes are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly trait columns are deliberately renamed (eye/wing/leg/… ) so the linkage isn't given away by the names. Provided as `data/fly_data.csv`.
+    - (Medium) Model what happens to the GWAS hits in the dichotomous trait if we had ascertained for a disease with onset at age 60. This requires turning all cases younger than 60 into controls. 
+    - (Medium) Do GWAS separately on males and females. Are there any differences? 
+    - (Hard) Predict genetic component of each trait based on the fitted residuals. How correlated is the genetic component? How would you make them more correlated (e.g. subset to significant variants, LD prune, penalized regression)? Plot PGS on x-axis, real trait on y-axis (for dichotomous trait, make stripplot of cases/control-stratified scatter plots).
+    
 
 **Session 2: Interpreting GWAS**
 
