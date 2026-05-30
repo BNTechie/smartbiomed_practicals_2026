@@ -15258,7 +15258,7 @@ GWAS, ~30s) before any exercises.</p>
 <span class="c1"># Locate the data directory, downloading from GitHub if needed (e.g. on Colab).</span>
 <span class="kn">import</span> <span class="nn">os</span><span class="o">,</span> <span class="nn">urllib.request</span>
 <span class="n">_NEED</span> <span class="o">=</span> <span class="p">[</span><span class="s1">&#39;gwas_data.npz&#39;</span><span class="p">,</span> <span class="s1">&#39;fly_data.csv&#39;</span><span class="p">]</span>
-<span class="n">_LFS</span>  <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;gwas_data.npz&#39;</span><span class="p">,</span> <span class="s1">&#39;sumstats_real.npz&#39;</span><span class="p">}</span>   <span class="c1"># tracked with Git LFS (media URL)</span>
+<span class="n">_LFS</span>  <span class="o">=</span> <span class="p">{</span><span class="s1">&#39;gwas_data.npz&#39;</span><span class="p">,</span> <span class="s1">&#39;sumstats_real.npz&#39;</span><span class="p">,</span> <span class="s1">&#39;pca_data.npz&#39;</span><span class="p">,</span> <span class="s1">&#39;finemap_data.npz&#39;</span><span class="p">}</span>   <span class="c1"># Git LFS</span>
 <span class="k">def</span> <span class="nf">_has_all</span><span class="p">(</span><span class="n">d</span><span class="p">):</span>
     <span class="k">return</span> <span class="n">d</span> <span class="ow">and</span> <span class="nb">all</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">exists</span><span class="p">(</span><span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">d</span><span class="p">,</span> <span class="n">f</span><span class="p">))</span> <span class="k">for</span> <span class="n">f</span> <span class="ow">in</span> <span class="n">_NEED</span><span class="p">)</span>
 <span class="n">DATA_DIR</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">d</span> <span class="k">for</span> <span class="n">d</span> <span class="ow">in</span> <span class="p">(</span><span class="s1">&#39;../data&#39;</span><span class="p">,</span> <span class="s1">&#39;data&#39;</span><span class="p">)</span> <span class="k">if</span> <span class="n">_has_all</span><span class="p">(</span><span class="n">d</span><span class="p">)),</span> <span class="kc">None</span><span class="p">)</span>
@@ -16033,7 +16033,7 @@ Q: A variant with a large LDL effect but near-zero height effect — what does t
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h3 id="Challenge-1:-QQ-plot-with-95%25-confidence-interval">Challenge 1: QQ plot with 95% confidence interval<a class="anchor-link" href="#Challenge-1:-QQ-plot-with-95%25-confidence-interval">&#182;</a></h3><p>Under the null, the $k$-th smallest p-value follows a Beta$(k, n-k+1)$ distribution.
+<h3 id="Challenge-1:-QQ-plot-with-95%25-confidence-interval-%E2%80%94-~10-min">Challenge 1: QQ plot with 95% confidence interval &#8212; ~10 min<a class="anchor-link" href="#Challenge-1:-QQ-plot-with-95%25-confidence-interval-%E2%80%94-~10-min">&#182;</a></h3><p>Under the null, the $k$-th smallest p-value follows a Beta$(k, n-k+1)$ distribution.
 Use <code>scipy.stats.beta.ppf</code> to add a 95% confidence band to the QQ plot.</p>
 
 </div>
@@ -16108,7 +16108,7 @@ class="
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h3 id="Challenge-2:-MAF-stratified-QQ-plot">Challenge 2: MAF-stratified QQ plot<a class="anchor-link" href="#Challenge-2:-MAF-stratified-QQ-plot">&#182;</a></h3><p>Are rare variants (low MAF) better or worse behaved than common variants?
+<h3 id="Challenge-2:-MAF-stratified-QQ-plot-%E2%80%94-~8-min">Challenge 2: MAF-stratified QQ plot &#8212; ~8 min<a class="anchor-link" href="#Challenge-2:-MAF-stratified-QQ-plot-%E2%80%94-~8-min">&#182;</a></h3><p>Are rare variants (low MAF) better or worse behaved than common variants?
 Stratify the real height variants into MAF bins and overlay QQ plots (random subset).</p>
 
 </div>
@@ -16182,7 +16182,7 @@ class="
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h3 id="Challenge-3:-Trumpet-plot-and-power-curves">Challenge 3: Trumpet plot and power curves<a class="anchor-link" href="#Challenge-3:-Trumpet-plot-and-power-curves">&#182;</a></h3><p>A <strong>trumpet plot</strong> shows the signed effect size ($\hat{\beta}$) vs. MAF for each variant.
+<h3 id="Challenge-3:-Trumpet-plot-and-power-curves-%E2%80%94-~12-min">Challenge 3: Trumpet plot and power curves &#8212; ~12 min<a class="anchor-link" href="#Challenge-3:-Trumpet-plot-and-power-curves-%E2%80%94-~12-min">&#182;</a></h3><p>A <strong>trumpet plot</strong> shows the signed effect size ($\hat{\beta}$) vs. MAF for each variant.
 The &quot;trumpet&quot; shape emerges because the power curves form a ±symmetric band:
 variants outside the band are detectable, those inside are below the noise floor.
 Points beyond the band on the left (rare variants) require large effects to be detected.</p>
@@ -16264,7 +16264,7 @@ class="
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h3 id="Challenge-4:-Winner's-curse">Challenge 4: Winner's curse<a class="anchor-link" href="#Challenge-4:-Winner's-curse">&#182;</a></h3><p>The <strong>winner's curse</strong>: an effect-size estimate for a <em>discovered</em> variant is upward-biased,
+<h3 id="Challenge-4:-Winner's-curse-%E2%80%94-~15-min">Challenge 4: Winner's curse &#8212; ~15 min<a class="anchor-link" href="#Challenge-4:-Winner's-curse-%E2%80%94-~15-min">&#182;</a></h3><p>The <strong>winner's curse</strong>: an effect-size estimate for a <em>discovered</em> variant is upward-biased,
 because a variant is only declared significant when its estimated effect happens to land large
 enough to cross the threshold. The honest effect is what you measure in an <strong>independent
 validation</strong> sample.</p>
@@ -16377,7 +16377,7 @@ class="
 </div>
 <div class="jp-InputArea jp-Cell-inputArea"><div class="jp-InputPrompt jp-InputArea-prompt">
 </div><div class="jp-RenderedHTMLCommon jp-RenderedMarkdown jp-MarkdownOutput " data-mime-type="text/markdown">
-<h3 id="Challenge-5:-Linking-a-real-lead-variant-to-known-associations">Challenge 5: Linking a real lead variant to known associations<a class="anchor-link" href="#Challenge-5:-Linking-a-real-lead-variant-to-known-associations">&#182;</a></h3><p>Our real LDL lead variant sits at a genuine genomic locus. Query the GWAS Catalog REST API
+<h3 id="Challenge-5:-Linking-a-real-lead-variant-to-the-GWAS-Catalog-%E2%80%94-~5-min">Challenge 5: Linking a real lead variant to the GWAS Catalog &#8212; ~5 min<a class="anchor-link" href="#Challenge-5:-Linking-a-real-lead-variant-to-the-GWAS-Catalog-%E2%80%94-~5-min">&#182;</a></h3><p>Our real LDL lead variant sits at a genuine genomic locus. Query the GWAS Catalog REST API
 for known associations near it — because this is real LDL data (not simulated), you should
 recover real, biologically sensible associations (think <em>APOE</em>, <em>LDLR</em>, <em>PCSK9</em>, <em>SORT1</em> ...).</p>
 
