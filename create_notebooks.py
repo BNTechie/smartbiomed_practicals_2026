@@ -493,70 +493,6 @@ def compute_hwe_midp(G):
     return stats.chi2.sf(chi2, df=1)
 """
 
-# simulate_cross for Drosophila challenge
-SIMULATE_CROSS_FN = """\
-def simulate_cross(female_X_genotype, male_X_genotype, n_offspring=500,
-                   gene_positions_cM=None, autosomal_traits=None, seed=None):
-    \"\"\"
-    Simulate offspring from a Drosophila cross.
-
-    Parameters
-    ----------
-    female_X_genotype : array of shape (2, n_X_genes)
-        Two X chromosomes of the female parent.
-        Row 0 = first X haplotype, Row 1 = second X haplotype.
-        Values 0 = wild-type, 1 = mutant allele.
-    male_X_genotype   : array of shape (1, n_X_genes)
-        Single X chromosome of the male parent.
-    n_offspring       : int
-        Number of offspring to simulate.
-    gene_positions_cM : array of length n_X_genes
-        Genetic positions in centiMorgans (default: equally spaced at 10 cM).
-    autosomal_traits  : dict {trait_name: freq}
-        Optional autosomal traits with given allele frequencies.
-    seed              : int, optional
-
-    Returns
-    -------
-    pd.DataFrame with columns: sex, trait_X1, trait_X2, ..., [autosomal traits]
-    \"\"\"
-    if seed is not None:
-        np.random.seed(seed)
-    n_X = female_X_genotype.shape[1]
-    if gene_positions_cM is None:
-        gene_positions_cM = np.arange(n_X) * 10.0
-    pos_M = np.array(gene_positions_cM) / 100   # cM → Morgans
-
-    # Simulate n_offspring
-    fly_sex = np.random.randint(0, 2, n_offspring)   # 0=female, 1=male
-    X_pheno = np.zeros((n_offspring, n_X), dtype=np.int8)
-
-    for i in range(n_offspring):
-        # Female transmits one X (with recombination)
-        start_hap = np.random.randint(0, 2)   # which of the 2 female X chromosomes
-        curr = start_hap
-        transmitted = np.zeros(n_X, dtype=np.int8)
-        transmitted[0] = female_X_genotype[curr, 0]
-        for j in range(1, n_X):
-            dist = pos_M[j] - pos_M[j-1]
-            n_xo = np.random.poisson(dist)
-            curr = (curr + n_xo) % 2
-            transmitted[j] = female_X_genotype[curr, j]
-
-        if fly_sex[i] == 1:  # male: X from mum, Y from dad → shows mutant if allele = 1
-            X_pheno[i] = transmitted
-        else:                # female: X from mum + X from dad → heterozygous, doesn't show recessive
-            X_pheno[i] = 0
-
-    result = pd.DataFrame(X_pheno, columns=[f'trait_X{g+1}' for g in range(n_X)])
-    result.insert(0, 'sex', fly_sex)
-
-    if autosomal_traits:
-        for name, freq in autosomal_traits.items():
-            result[name] = np.random.binomial(1, freq, n_offspring)
-
-    return result
-"""
 
 
 # ─── Session 1 cells ──────────────────────────────────────────────────────────
@@ -713,78 +649,24 @@ where $p$ = ALT allele frequency and $q = 1-p$.
 Violations can indicate genotyping errors (excess homozygosity is most common).
 Standard GWAS threshold: HWE $p < 10^{-6}$ (remove variants that fail).
 
-We'll implement a chi-squared test and compare it to a more accurate mid-p exact test (provided).
+We **provide** a vectorised HWE test (`compute_hwe_midp`, based on the heterozygote deviation) —
+run it below and use it for QC. In Challenge 1 you'll implement the classic 3-class chi-squared
+test yourself and compare.
 """
 
-S1_EX13_STUDENT = """\
-# ── Exercise 1.3: HWE chi-squared test (vectorised) ──────────────────────────
-def compute_hwe_chisq(G):
-    \"\"\"
-    Vectorised chi-squared test for HWE across all variants.
-    Operates column-wise with numpy — no Python loop needed.
-    Returns p-values of shape (M,).
-    \"\"\"
-    G_int  = np.where(np.isnan(G), -1, G).astype(int)
-    n_samp = (G_int >= 0).sum(0).astype(float)   # non-missing count per variant
-    n_AA   = (G_int == 0).sum(0).astype(float)
-    n_AB   = (G_int == 1).sum(0).astype(float)
-    n_BB   = (G_int == 2).sum(0).astype(float)
-
-    # YOUR CODE — all vectorised over all M variants simultaneously
-    # ALT allele frequency: each copy of the ALT allele (BB = 2, AB = 1) contributes
-    p      = ???   # (2*n_BB + n_AB) / (2*n_samp)
-
-    # Expected genotype counts under HWE: P(0 ALT) = (1-p)², P(1 ALT) = 2p(1-p), P(2 ALT) = p²
-    exp_AA = ???
-    exp_AB = ???
-    exp_BB = ???
-
-    # Chi-squared: sum (obs - exp)² / exp, 1 degree of freedom
-    chi2   = ???
-
-    return stats.chi2.sf(chi2, df=1)
-
-hwe_chisq = compute_hwe_chisq(G_raw)
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Provided: alternative HWE test based on heterozygote deviation
+# Provided HWE test cell (regular Part-1 flow): students just run it and use hwe_pvals for QC.
+S1_PROVIDE_HWE = """\
+# ── Provided HWE test (heterozygote-deviation form) — run and use for QC ─────
 """ + HWE_MIDP_FN + """
-hwe_midp = compute_hwe_midp(G_raw)
+hwe_pvals = compute_hwe_midp(G_raw)
+print(f"Variants failing HWE (p < 1e-6): {(hwe_pvals < 1e-6).sum():,}")
 
-fig, axes = plt.subplots(1, 2, figsize=(12, 4))
-for ax, hwe_p, title in zip(axes, [hwe_chisq, hwe_midp],
-                              ['3-class chi-squared', 'Heterozygosity test']):
-    ax.scatter(-np.log10(hwe_midp + 1e-15), -np.log10(hwe_p + 1e-15),
-               alpha=0.2, s=1, color='steelblue', rasterized=True)
-    lim = max((-np.log10(hwe_midp + 1e-15)).max(), (-np.log10(hwe_p + 1e-15)).max()) * 1.05
-    ax.plot([0, lim], [0, lim], 'r--', linewidth=1)
-    ax.set_title(title)
-axes[0].set_xlabel('-log10(het test)'); axes[0].set_ylabel('-log10(3-class chi-sq)')
-axes[1].set_xlabel('-log10(het test)'); axes[1].set_ylabel('-log10(het test)')
-plt.suptitle('HWE test comparison'); plt.tight_layout(); plt.show()
-
-print(f"Variants failing HWE (chi-sq, p<1e-6): {(hwe_chisq < 1e-6).sum():,}")
-print(f"Variants failing HWE (het test, p<1e-6): {(hwe_midp < 1e-6).sum():,}")
-print("Q: Where do the two tests agree? Where do they differ?")
-"""
-
-S1_EX13_SOL = """\
-def compute_hwe_chisq(G):
-    G_int  = np.where(np.isnan(G), -1, G).astype(int)
-    n_samp = (G_int >= 0).sum(0).astype(float)
-    n_AA   = (G_int == 0).sum(0).astype(float)
-    n_AB   = (G_int == 1).sum(0).astype(float)
-    n_BB   = (G_int == 2).sum(0).astype(float)
-    p      = (2*n_BB + n_AB) / (2*n_samp + 1e-15)
-    exp_AA = n_samp * (1-p)**2
-    exp_AB = n_samp * 2*p*(1-p)
-    exp_BB = n_samp * p**2
-    chi2   = ((n_AA-exp_AA)**2/(exp_AA+1e-8) +
-              (n_AB-exp_AB)**2/(exp_AB+1e-8) +
-              (n_BB-exp_BB)**2/(exp_BB+1e-8))
-    return stats.chi2.sf(chi2, df=1)
-
-hwe_chisq = compute_hwe_chisq(G_raw)
+fig, ax = plt.subplots(figsize=(7, 3))
+ax.hist(-np.log10(hwe_pvals + 1e-15), bins=60, color='salmon', edgecolor='white', linewidth=0.4)
+ax.axvline(-np.log10(1e-6), color='red', linestyle='--', label='p = 1e-6')
+ax.set_xlabel('-log10(HWE p)'); ax.set_ylabel('Variants (log scale)'); ax.set_yscale('log')
+ax.set_title('HWE test p-values'); ax.legend()
+plt.tight_layout(); plt.show()
 """
 
 S1_QC_APPLY = """\
@@ -796,7 +678,7 @@ HWE_THRESH  = 1e-6     # remove variants with HWE p < 1e-6
 
 pass_miss = miss_rate < MISS_THRESH
 pass_maf  = maf       > MAF_THRESH
-pass_hwe  = hwe_chisq > HWE_THRESH   # use your chi-sq result
+pass_hwe  = hwe_pvals > HWE_THRESH   # provided HWE test from Exercise 1.3
 
 qc_pass = pass_miss & pass_maf & pass_hwe
 
@@ -811,8 +693,7 @@ print(f"  After missingness QC: {pass_miss.sum():>7,} variants")
 print(f"  After MAF QC:         {pass_maf.sum():>7,} variants")
 print(f"  After HWE QC:         {pass_hwe.sum():>7,} variants")
 print(f"  After all filters:    {M_qc:>7,} variants  ← G_qc")
-
-del G_raw  # free ~4 GB; G_qc is the working matrix from here on
+# (G_raw is kept so the HWE chi-squared challenge can re-run on the raw genotypes.)
 """
 
 S1_PART2_MD = """\
@@ -1011,8 +892,85 @@ These questions are for fast finishers and are not required in the 45-minute ses
 They connect directly to ideas from the lecture.
 """
 
+S1_CQHWE_MD = """\
+### Challenge 1: HWE chi-squared test from scratch
+
+For QC we used the provided heterozygosity-based test (`compute_hwe_midp`). The classic HWE test
+is a **3-class chi-squared** comparing observed genotype counts (AA/AB/BB) to their HWE
+expectations $n p^2, 2npq, nq^2$. Implement it yourself and compare your p-values to the provided
+test — where do they agree, and where do they diverge?
+"""
+
+S1_CQHWE_STUDENT = """\
+# Challenge 1: HWE chi-squared test (vectorised), compared to the provided test
+def compute_hwe_chisq(G):
+    \"\"\"Vectorised 3-class chi-squared HWE test; returns p-values of shape (M,).\"\"\"
+    G_int  = np.where(np.isnan(G), -1, G).astype(int)
+    n_samp = (G_int >= 0).sum(0).astype(float)   # non-missing count per variant
+    n_AA   = (G_int == 0).sum(0).astype(float)
+    n_AB   = (G_int == 1).sum(0).astype(float)
+    n_BB   = (G_int == 2).sum(0).astype(float)
+
+    # YOUR CODE — all vectorised over all M variants simultaneously
+    # ALT allele frequency: each copy of the ALT allele (BB = 2, AB = 1) contributes
+    p      = ???   # (2*n_BB + n_AB) / (2*n_samp)
+
+    # Expected genotype counts under HWE: P(0 ALT) = (1-p)², P(1 ALT) = 2p(1-p), P(2 ALT) = p²
+    exp_AA = ???
+    exp_AB = ???
+    exp_BB = ???
+
+    # Chi-squared: sum (obs - exp)² / exp, 1 degree of freedom
+    chi2   = ???
+
+    return stats.chi2.sf(chi2, df=1)
+
+hwe_chisq = compute_hwe_chisq(G_raw)
+
+# Compare to the provided heterozygosity test (hwe_pvals, from Exercise 1.3)
+fig, ax = plt.subplots(figsize=(5, 5))
+ax.scatter(-np.log10(hwe_pvals + 1e-15), -np.log10(hwe_chisq + 1e-15),
+           s=1, alpha=0.2, color='steelblue', rasterized=True)
+lim = max((-np.log10(hwe_pvals + 1e-15)).max(), (-np.log10(hwe_chisq + 1e-15)).max()) * 1.05
+ax.plot([0, lim], [0, lim], 'r--', linewidth=1)
+ax.set_xlabel('-log10(p) provided het test'); ax.set_ylabel('-log10(p) your chi-squared')
+ax.set_title('HWE: chi-squared vs heterozygosity test'); plt.tight_layout(); plt.show()
+
+print(f"Fail HWE (chi-sq, p<1e-6):   {(hwe_chisq < 1e-6).sum():,}")
+print(f"Fail HWE (het test, p<1e-6): {(hwe_pvals < 1e-6).sum():,}")
+print("Q: Where do the two tests agree? Where do they differ, and why?")
+"""
+
+S1_CQHWE_SOL = """\
+def compute_hwe_chisq(G):
+    G_int  = np.where(np.isnan(G), -1, G).astype(int)
+    n_samp = (G_int >= 0).sum(0).astype(float)
+    n_AA   = (G_int == 0).sum(0).astype(float)
+    n_AB   = (G_int == 1).sum(0).astype(float)
+    n_BB   = (G_int == 2).sum(0).astype(float)
+    p      = (2*n_BB + n_AB) / (2*n_samp + 1e-15)
+    exp_AA = n_samp * (1-p)**2
+    exp_AB = n_samp * 2*p*(1-p)
+    exp_BB = n_samp * p**2
+    chi2   = ((n_AA-exp_AA)**2/(exp_AA+1e-8) +
+              (n_AB-exp_AB)**2/(exp_AB+1e-8) +
+              (n_BB-exp_BB)**2/(exp_BB+1e-8))
+    return stats.chi2.sf(chi2, df=1)
+
+hwe_chisq = compute_hwe_chisq(G_raw)
+fig, ax = plt.subplots(figsize=(5, 5))
+ax.scatter(-np.log10(hwe_pvals + 1e-15), -np.log10(hwe_chisq + 1e-15),
+           s=1, alpha=0.2, color='steelblue', rasterized=True)
+lim = max((-np.log10(hwe_pvals + 1e-15)).max(), (-np.log10(hwe_chisq + 1e-15)).max()) * 1.05
+ax.plot([0, lim], [0, lim], 'r--', linewidth=1)
+ax.set_xlabel('-log10(p) provided het test'); ax.set_ylabel('-log10(p) your chi-squared')
+ax.set_title('HWE: chi-squared vs heterozygosity test'); plt.tight_layout(); plt.show()
+print(f"Fail HWE (chi-sq, p<1e-6):   {(hwe_chisq < 1e-6).sum():,}")
+print(f"Fail HWE (het test, p<1e-6): {(hwe_pvals < 1e-6).sum():,}")
+"""
+
 S1_CQ1_MD = """\
-### Challenge 1: Additive, Dominant, and Recessive Models
+### Challenge 2: Additive, Dominant, and Recessive Models
 
 The standard GWAS uses an **additive** model: genotype is encoded 0/1/2 (copies of ALT allele),
 so the heterozygote AB is midway between AA and BB.
@@ -1029,7 +987,7 @@ They may not be the genome-wide lead hit under the additive model!
 """
 
 S1_CQ1_STUDENT = """\
-# Challenge 1: Find the non-additive loci
+# Challenge 2: Find the non-additive loci
 import seaborn as sns
 
 # YOUR CODE HERE
@@ -1096,7 +1054,7 @@ plt.tight_layout(); plt.show()
 """
 
 S1_LZ_MD = """\
-### Challenge 2: Manual LocusZoom plot
+### Challenge 3: Manual LocusZoom plot
 
 A **LocusZoom plot** shows $-\\log_{10}(p)$ vs. position for a region around a hit, with points
 **coloured by LD** ($r^2$) with the lead variant. It reveals the LD structure that produces the
@@ -1107,7 +1065,7 @@ We use the covariate-adjusted continuous-trait GWAS (`pvals_cov`) and the genoty
 """
 
 S1_LZ_STUDENT = """\
-# Challenge 2: Manual LocusZoom plot for the lead locus (continuous trait)
+# Challenge 3: Manual LocusZoom plot for the lead locus (continuous trait)
 
 # Region: ±1 Mb around the lead variant
 j_lead    = np.argmin(pvals_cov)
@@ -1160,7 +1118,7 @@ plt.tight_layout(); plt.show()
 """
 
 S1_CQ2_MD = """\
-### Challenge 3: Drosophila Linkage Analysis (Hard!)
+### Challenge 4: Drosophila Linkage Analysis (Hard!)
 
 *(Inspired by Sturtevant, 1913 — the first genetic map.)*
 
@@ -1176,11 +1134,10 @@ don't tell you which is which.
 1. Identify which traits are X-linked (hint: look at trait frequency in males vs females).
 2. For the X-linked traits, compute pairwise recombination frequencies.
 3. Use the recombination frequencies to infer the order and spacing of the 6 genes on the chromosome.
-4. *(Extension)* Use `simulate_cross()` to design a new cross and verify your inferred map.
 """
 
 S1_CQ2_STUDENT = """\
-# Challenge 2, Part A: Identify X-linked traits
+# Challenge 4, Part A: Identify X-linked traits
 # For X-linked recessive traits in a test cross: males show the trait ~50% of the time,
 # females show it ~0% of the time (they are carriers).
 # For autosomal traits: frequency is similar in males and females.
@@ -1189,7 +1146,7 @@ fly_df.head()
 """
 
 S1_CQ2B_STUDENT = """\
-# Challenge 2, Part A (continued)
+# Challenge 4, Part A (continued)
 trait_cols = [c for c in fly_df.columns if c.startswith('trait_')]
 
 # YOUR CODE HERE
@@ -1212,7 +1169,7 @@ print(f"\\nX-linked traits: {x_linked_traits}")
 """
 
 S1_CQ2C_STUDENT = """\
-# Challenge 2, Part B: Pairwise recombination frequencies
+# Challenge 4, Part B: Pairwise recombination frequencies
 # For X-linked traits, recombination frequency between genes A and B =
 # fraction of MALE offspring where the phenotype for A DIFFERS from phenotype for B.
 # (Non-recombinants have all traits in coupling; recombinants show a 'break' in the pattern.)
@@ -1244,7 +1201,7 @@ print(pd.DataFrame(recomb_freq, index=x_linked_traits, columns=x_linked_traits).
 """
 
 S1_CQ2D_STUDENT = """\
-# Challenge 2, Part C: Infer gene order
+# Challenge 4, Part C: Infer gene order
 # The pair with the SMALLEST recombination frequency are the CLOSEST together.
 # Iteratively build up the genetic map by placing genes relative to each other.
 #
@@ -1276,29 +1233,161 @@ print(f"Closest pair: {x_linked_traits[i_min]} — {x_linked_traits[j_min]}: "
       f"r={recomb_freq[i_min,j_min]:.3f}, d={haldane_d(recomb_freq[i_min,j_min]):.1f} cM")
 """
 
-S1_CQ2E_STUDENT = """\
-# Challenge 2, Part D: Verify with simulate_cross()
-# Use the provided simulate_cross() to test your inferred gene order.
-# Design a cross using your inferred map and check if the recombination frequencies match.
-""" + SIMULATE_CROSS_FN + """
-# Example: heterozygous female for all 6 traits (mutant/WT) × WT male
-female_X = np.array([[1, 1, 1, 1, 1, 1],   # mutant chromosome
-                      [0, 0, 0, 0, 0, 0]])  # WT chromosome
+# ── Challenge 5: Ascertainment by age of onset ───────────────────────────────
+S1_CQ4_MD = """\
+### Challenge 5: Ascertainment by age of onset (Medium)
 
-# YOUR CODE HERE: set gene positions based on your inferred map
-inferred_positions_cM = ???    # list of 6 positions in cM
+Disease cohorts are often **ascertained** — individuals only enter as *cases* once they have
+been diagnosed. For a late-onset disease, someone who will eventually develop it but is still
+young looks like a *control* at recruitment.
 
-offspring = simulate_cross(female_X, np.array([[0, 0, 0, 0, 0, 0]]),
-                           n_offspring=2000,
-                           gene_positions_cM=inferred_positions_cM,
-                           seed=99)
-print("Simulated recombination frequencies (males only):")
-sim_males = offspring[offspring['sex'] == 1]
-x_cols = [c for c in sim_males.columns if c.startswith('trait_X')]
-sim_r = pd.DataFrame([[  (sim_males[ti] != sim_males[tj]).mean()
-                          for tj in x_cols] for ti in x_cols],
-                     index=x_cols, columns=x_cols)
-print(sim_r.round(3))
+Model this: treat the binary trait as a late-onset disease and **recode every case younger than
+60 as a control**, then re-run the logistic GWAS. Compare the hits to the fully-ascertained
+baseline. What happens to power, and why?
+"""
+
+S1_CQ4_STUDENT = """\
+# Challenge 5: Age-of-onset ascertainment
+covars = np.column_stack([(age - age.mean()) / age.std(), sex])
+
+# Baseline: full ascertainment (all cases observed)
+_, pvals_base = run_logistic_gwas_fast(y_bin, G_qc, covars)
+
+# YOUR CODE HERE
+# Late-onset ascertainment: a case younger than 60 has not yet been diagnosed → recode to control
+y_asc = y_bin.copy()
+y_asc[???] = 0                     # cases with age < 60 become controls
+
+print(f"Cases: {int(y_bin.sum())} -> {int(y_asc.sum())} after requiring onset age >= 60")
+_, pvals_asc = run_logistic_gwas_fast(y_asc, G_qc, covars)
+print(f"Genome-wide-sig hits:  baseline {int((pvals_base<5e-8).sum())}, "
+      f"ascertained {int((pvals_asc<5e-8).sum())}")
+
+# Compare significance at the suggestive variants
+sugg = np.where(pvals_base < 1e-4)[0]
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+ax.scatter(-np.log10(pvals_base[sugg]+1e-300), -np.log10(pvals_asc[sugg]+1e-300),
+           s=30, alpha=0.7, color='steelblue')
+lim = -np.log10(min(pvals_base[sugg].min(), pvals_asc[sugg].min()) + 1e-300) * 1.05
+ax.plot([0, lim], [0, lim], 'r--', label='y = x')
+ax.axhline(-np.log10(5e-8), color='orange', ls=':', lw=1)
+ax.axvline(-np.log10(5e-8), color='orange', ls=':', lw=1, label='5e-8')
+ax.set_xlabel(r'$-\\log_{10}p$ baseline'); ax.set_ylabel(r'$-\\log_{10}p$ ascertained')
+ax.set_title('Effect of age-of-onset ascertainment on power'); ax.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+print("Q: Why does dropping young cases weaken the signal? (hint: case count and power)")
+"""
+
+S1_CQ4_SOL = """\
+covars = np.column_stack([(age - age.mean()) / age.std(), sex])
+_, pvals_base = run_logistic_gwas_fast(y_bin, G_qc, covars)
+
+y_asc = y_bin.copy()
+y_asc[(y_bin == 1) & (age < 60)] = 0
+print(f"Cases: {int(y_bin.sum())} -> {int(y_asc.sum())} after requiring onset age >= 60")
+_, pvals_asc = run_logistic_gwas_fast(y_asc, G_qc, covars)
+print(f"Genome-wide-sig hits:  baseline {int((pvals_base<5e-8).sum())}, "
+      f"ascertained {int((pvals_asc<5e-8).sum())}")
+
+sugg = np.where(pvals_base < 1e-4)[0]
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+ax.scatter(-np.log10(pvals_base[sugg]+1e-300), -np.log10(pvals_asc[sugg]+1e-300),
+           s=30, alpha=0.7, color='steelblue')
+lim = -np.log10(min(pvals_base[sugg].min(), pvals_asc[sugg].min()) + 1e-300) * 1.05
+ax.plot([0, lim], [0, lim], 'r--', label='y = x')
+ax.axhline(-np.log10(5e-8), color='orange', ls=':', lw=1)
+ax.axvline(-np.log10(5e-8), color='orange', ls=':', lw=1, label='5e-8')
+ax.set_xlabel(r'$-\\log_{10}p$ baseline'); ax.set_ylabel(r'$-\\log_{10}p$ ascertained')
+ax.set_title('Effect of age-of-onset ascertainment on power'); ax.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+# Dropping young cases ~halves the case count → less power → points fall below y=x.
+"""
+
+# ── Challenge 6: Polygenic scores (PGS) ──────────────────────────────────────
+S1_CQ5_MD = """\
+### Challenge 6: Polygenic scores — predicting the genetic component (Hard)
+
+A **polygenic score** is the predicted genetic value $\\hat g_i = \\sum_j x_{ij}\\,\\hat\\beta_j$,
+built from GWAS effect estimates. To judge prediction honestly we fit the effects in a
+**training** half and score an independent **test** half.
+
+Build a PGS for the continuous trait two ways — using **all** variants vs only the
+**genome-wide-significant** ones — and correlate each with the true phenotype in the test set.
+Then do the same for the binary trait and show the PGS split by case/control.
+
+How would you push the correlation higher still? (LD clumping, p-value thresholding, penalized
+or Bayesian shrinkage of the effects.)
+"""
+
+S1_CQ5_STUDENT = """\
+# Challenge 6: Polygenic scores (train/test split)
+import seaborn as sns
+rng = np.random.default_rng(7)
+perm = rng.permutation(N); tr, te = perm[:N//2], perm[N//2:]   # train / test halves
+cov_tr = np.column_stack([(age[tr]-age.mean())/age.std(), sex[tr]])
+
+# Fit effects on the TRAINING half
+b_tr, _, p_tr = run_gwas(y_cont[tr], G_qc[tr], cov_tr)
+
+# YOUR CODE HERE
+# PGS on the TEST half = test genotypes @ training effects, for (a) all variants, (b) sig only
+pgs_all = ???                       # G_qc[te] @ b_tr
+sig = p_tr < 5e-8
+pgs_sig = ???                       # G_qc[te][:, sig] @ b_tr[sig]
+
+for nm, pgs in [('all variants', pgs_all), ('genome-wide-sig only', pgs_sig)]:
+    print(f"  corr(PGS [{nm}], y_cont) on test set = {np.corrcoef(pgs, y_cont[te])[0,1]:.3f}")
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+for ax, (nm, pgs) in zip(axes, [('all variants', pgs_all), ('sig only', pgs_sig)]):
+    ax.scatter(pgs, y_cont[te], s=5, alpha=0.2, color='steelblue')
+    ax.set_xlabel(f'PGS — {nm}'); ax.set_ylabel('y_cont (test)')
+    ax.set_title(f'r = {np.corrcoef(pgs, y_cont[te])[0,1]:.3f}')
+plt.tight_layout(); plt.show()
+
+# Binary trait: PGS split by case/control on the test set
+log_or_tr, pbin_tr = run_logistic_gwas_fast(y_bin[tr], G_qc[tr], cov_tr)
+sb = pbin_tr < 5e-8
+pgs_bin = G_qc[te][:, sb] @ log_or_tr[sb] if sb.sum() else G_qc[te] @ log_or_tr
+dfb = pd.DataFrame({'status': np.where(y_bin[te]==1, 'case', 'control'), 'PGS': pgs_bin})
+fig, ax = plt.subplots(figsize=(5, 4))
+sns.stripplot(data=dfb.sample(min(2000, len(dfb)), random_state=0),
+              x='status', y='PGS', alpha=0.3, size=2,
+              palette=['#4e79a7', '#e15759'], ax=ax)
+ax.set_title('Binary-trait PGS by case/control (test set)'); plt.tight_layout(); plt.show()
+print("Q: Why does restricting to significant variants improve the correlation out-of-sample?")
+"""
+
+S1_CQ5_SOL = """\
+import seaborn as sns
+rng = np.random.default_rng(7)
+perm = rng.permutation(N); tr, te = perm[:N//2], perm[N//2:]
+cov_tr = np.column_stack([(age[tr]-age.mean())/age.std(), sex[tr]])
+
+b_tr, _, p_tr = run_gwas(y_cont[tr], G_qc[tr], cov_tr)
+pgs_all = G_qc[te] @ b_tr
+sig = p_tr < 5e-8
+pgs_sig = G_qc[te][:, sig] @ b_tr[sig]
+for nm, pgs in [('all variants', pgs_all), ('genome-wide-sig only', pgs_sig)]:
+    print(f"  corr(PGS [{nm}], y_cont) on test set = {np.corrcoef(pgs, y_cont[te])[0,1]:.3f}")
+
+fig, axes = plt.subplots(1, 2, figsize=(11, 5))
+for ax, (nm, pgs) in zip(axes, [('all variants', pgs_all), ('sig only', pgs_sig)]):
+    ax.scatter(pgs, y_cont[te], s=5, alpha=0.2, color='steelblue')
+    ax.set_xlabel(f'PGS — {nm}'); ax.set_ylabel('y_cont (test)')
+    ax.set_title(f'r = {np.corrcoef(pgs, y_cont[te])[0,1]:.3f}')
+plt.tight_layout(); plt.show()
+
+log_or_tr, pbin_tr = run_logistic_gwas_fast(y_bin[tr], G_qc[tr], cov_tr)
+sb = pbin_tr < 5e-8
+pgs_bin = G_qc[te][:, sb] @ log_or_tr[sb] if sb.sum() else G_qc[te] @ log_or_tr
+dfb = pd.DataFrame({'status': np.where(y_bin[te]==1, 'case', 'control'), 'PGS': pgs_bin})
+fig, ax = plt.subplots(figsize=(5, 4))
+sns.stripplot(data=dfb.sample(min(2000, len(dfb)), random_state=0),
+              x='status', y='PGS', alpha=0.3, size=2,
+              palette=['#4e79a7', '#e15759'], ax=ax)
+ax.set_title('Binary-trait PGS by case/control (test set)'); plt.tight_layout(); plt.show()
+# All-variant PGS is mostly noise out-of-sample; restricting to sig variants raises the correlation.
 """
 
 
@@ -1937,115 +2026,99 @@ plt.tight_layout(); plt.show()
 S2_CQ4_MD = """\
 ### Challenge 4: Winner's curse
 
-The **winner's curse**: effect size estimates for discovered variants are upward-biased,
-because a variant is only 'discovered' when its estimated effect happens to be large enough
-to cross the significance threshold. The honest effect is what you'd get in *independent*
-replication samples.
+The **winner's curse**: an effect-size estimate for a *discovered* variant is upward-biased,
+because a variant is only declared significant when its estimated effect happens to land large
+enough to cross the threshold. The honest effect is what you measure in an **independent
+validation** sample.
 
-This needs individual-level genotypes, so we use the **simulated cohort**:
-1. Take a 2,000-individual **discovery** subset, run GWAS, identify the significant hit(s).
-2. Form the **disjoint 8,000-individual** replication pool (the complement).
-3. **Bootstrap-resample** the 8,000 pool 100 times; each time re-estimate the hit's effect.
-   This gives a *distribution* of honest replication effect sizes for the discovered hit.
-4. Compare the discovery point estimate to that distribution: if it sits in the upper tail, the
-   discovery estimate was inflated (winner's curse). A strongly-powered hit well above the
-   threshold may sit mid-distribution — the curse mainly bites variants that *just* cross it.
+Using the simulated cohort (N=10,000), for each replicate we randomly split into a **5,000
+discovery** half and a disjoint **5,000 validation** half:
+1. Run the discovery GWAS; keep replicates that yield ≥1 genome-wide-significant variant
+   (resample the split until we have 3 such replicates).
+2. For each significant variant, re-estimate its effect **once** in that replicate's validation
+   half.
+3. Scatter discovery vs validation effect sizes across all replicates. Winner's curse shows up
+   as validation effects sitting **closer to zero** than the discovery effects (below the y=x
+   line in magnitude).
 """
 
 S2_CQ4_STUDENT = """\
-# Challenge 4: Winner's curse — 100x bootstrap of the disjoint 8k replication pool
-rng = np.random.default_rng(42)
-n_sub   = 2000
-sub_idx = np.sort(rng.choice(N, n_sub, replace=False))   # discovery
-rep_idx = np.setdiff1d(np.arange(N), sub_idx)            # disjoint replication pool (8k)
-cov_sub = np.column_stack([(age[sub_idx]-age.mean())/age.std(), sex[sub_idx]])
+# Challenge 4: Winner's curse — discovery vs validation across resampled 5k/5k splits
+rng = np.random.default_rng(0)
+def _covs(idx):
+    return np.column_stack([(age[idx]-age.mean())/age.std(), sex[idx]])
 
-# Discovery GWAS on the 2k subset
-betas_disc, _, pvals_disc = run_gwas(y_cont[sub_idx], G_qc[sub_idx], cov_sub)
-hit_idx = np.where(pvals_disc < 5e-8)[0]
-if len(hit_idx) == 0:
-    hit_idx = np.where(pvals_disc < 1e-5)[0]
-print(f"Discovery hits: {len(hit_idx)}")
+disc_betas, val_betas = [], []
+n_rep, n_attempt = 0, 0
+while n_rep < 3:                         # resample splits until 3 replicates have a hit
+    n_attempt += 1
+    perm = rng.permutation(N)
+    disc, val = perm[:5000], perm[5000:]            # disjoint 5k discovery / 5k validation
 
-# Bootstrap the 8k pool 100x, re-estimating the hit effects each time (hit columns only = fast)
-B = 100
-Ghit = G_qc[:, hit_idx]
-boot = np.empty((B, len(hit_idx)))
-for b in range(B):
-    bs = rng.choice(rep_idx, len(rep_idx), replace=True)   # resample 8k WITH replacement
-    cov_bs = np.column_stack([(age[bs]-age.mean())/age.std(), sex[bs]])
-    # YOUR CODE HERE: GWAS of y_cont on the hit columns in this bootstrap sample
-    bb, _, _ = run_gwas(???, ???, ???)
-    boot[b] = bb
+    # Discovery GWAS on this 5k half
+    bd, _, pd = run_gwas(y_cont[disc], G_qc[disc], _covs(disc))
+    hits = np.where(pd < 5e-8)[0]
+    if len(hits) == 0:
+        continue                                     # no hit this split — resample
 
-beta_disc = betas_disc[hit_idx]
-# How often does a resample reach the discovery effect magnitude?
-frac_reaching = (np.abs(boot) >= np.abs(beta_disc)).mean(0)
-for j, h in enumerate(hit_idx):
-    print(f"  hit {rsids_qc[h]}: discovery b={beta_disc[j]:+.3f}, "
-          f"replication mean b={boot[:,j].mean():+.3f}, "
-          f"|disc| reached in {frac_reaching[j]:.0%} of 100 resamples")
+    # YOUR CODE HERE: estimate those hit variants' effects ONCE in the validation half
+    # Hint: run_gwas on just the hit columns, G_qc[:, hits][val]
+    bv, _, _ = run_gwas(???, ???, ???)
 
-# Distribution of the 100 resampled effect sizes for each hit, with the discovery estimate marked
-nh = len(hit_idx)
-fig, axes = plt.subplots(1, nh, figsize=(4.5*nh, 4), squeeze=False)
-for j in range(nh):
-    ax = axes[0, j]
-    ax.hist(boot[:, j], bins=20, color='steelblue', edgecolor='white', linewidth=0.4)
-    ax.axvline(beta_disc[j],      color='red',   lw=2, label='discovery (2k) estimate')
-    ax.axvline(boot[:, j].mean(), color='black', lw=1.5, ls='--', label='replication mean')
-    ax.set_title(f'{rsids_qc[hit_idx[j]]}  (|disc| reached {frac_reaching[j]:.0%})', fontsize=10)
-    ax.set_xlabel(r'$\\hat{\\beta}$ in 8k bootstrap')
-    if j == 0:
-        ax.set_ylabel('resamples (of 100)'); ax.legend(fontsize=8)
-plt.suptitle("Winner's curse: discovery estimate vs 8k replication bootstrap distribution", y=1.02)
+    disc_betas.extend(bd[hits]); val_betas.extend(bv)
+    n_rep += 1
+    print(f"  replicate {n_rep}: {len(hits)} hit(s)  (found on attempt {n_attempt})")
+
+disc_betas = np.array(disc_betas); val_betas = np.array(val_betas)
+print(f"Used {n_attempt} resampled splits to get 3 replicates with a hit; "
+      f"{len(disc_betas)} discovery hits total")
+
+lim = np.abs(np.r_[disc_betas, val_betas]).max() * 1.15
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+ax.scatter(disc_betas, val_betas, s=45, alpha=0.8, color='steelblue', zorder=3)
+ax.plot([-lim, lim], [-lim, lim], 'r--', label='y = x (no bias)')
+ax.axhline(0, color='grey', lw=0.5); ax.axvline(0, color='grey', lw=0.5)
+ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+ax.set_xlabel('Discovery effect size (5k)'); ax.set_ylabel('Validation effect size (disjoint 5k)')
+ax.set_title("Winner's curse: discovery vs validation"); ax.legend(fontsize=8)
 plt.tight_layout(); plt.show()
-print("Q: Does the discovery estimate sit in the upper tail of the replication distribution?")
-print("   (A hit far above the 5e-8 threshold may not — the curse mainly bites marginal hits.)")
+print("Q: Are the validation effects systematically closer to zero than the discovery effects?")
 """
 
 S2_CQ4_SOL = """\
-rng = np.random.default_rng(42)
-n_sub   = 2000
-sub_idx = np.sort(rng.choice(N, n_sub, replace=False))
-rep_idx = np.setdiff1d(np.arange(N), sub_idx)
-cov_sub = np.column_stack([(age[sub_idx]-age.mean())/age.std(), sex[sub_idx]])
+rng = np.random.default_rng(0)
+def _covs(idx):
+    return np.column_stack([(age[idx]-age.mean())/age.std(), sex[idx]])
 
-betas_disc, _, pvals_disc = run_gwas(y_cont[sub_idx], G_qc[sub_idx], cov_sub)
-hit_idx = np.where(pvals_disc < 5e-8)[0]
-if len(hit_idx) == 0: hit_idx = np.where(pvals_disc < 1e-5)[0]
-print(f"Discovery hits: {len(hit_idx)}")
+disc_betas, val_betas = [], []
+n_rep, n_attempt = 0, 0
+while n_rep < 3:
+    n_attempt += 1
+    perm = rng.permutation(N)
+    disc, val = perm[:5000], perm[5000:]
+    bd, _, pd = run_gwas(y_cont[disc], G_qc[disc], _covs(disc))
+    hits = np.where(pd < 5e-8)[0]
+    if len(hits) == 0:
+        continue
+    bv, _, _ = run_gwas(y_cont[val], G_qc[:, hits][val], _covs(val))
+    disc_betas.extend(bd[hits]); val_betas.extend(bv)
+    n_rep += 1
+    print(f"  replicate {n_rep}: {len(hits)} hit(s)  (found on attempt {n_attempt})")
 
-B = 100
-Ghit = G_qc[:, hit_idx]
-boot = np.empty((B, len(hit_idx)))
-for b in range(B):
-    bs = rng.choice(rep_idx, len(rep_idx), replace=True)
-    cov_bs = np.column_stack([(age[bs]-age.mean())/age.std(), sex[bs]])
-    bb, _, _ = run_gwas(y_cont[bs], Ghit[bs], cov_bs)
-    boot[b] = bb
+disc_betas = np.array(disc_betas); val_betas = np.array(val_betas)
+print(f"Used {n_attempt} resampled splits to get 3 replicates with a hit; "
+      f"{len(disc_betas)} discovery hits total")
 
-beta_disc = betas_disc[hit_idx]
-frac_reaching = (np.abs(boot) >= np.abs(beta_disc)).mean(0)
-for j, h in enumerate(hit_idx):
-    print(f"  hit {rsids_qc[h]}: discovery b={beta_disc[j]:+.3f}, "
-          f"replication mean b={boot[:,j].mean():+.3f}, "
-          f"|disc| reached in {frac_reaching[j]:.0%} of 100 resamples")
-
-nh = len(hit_idx)
-fig, axes = plt.subplots(1, nh, figsize=(4.5*nh, 4), squeeze=False)
-for j in range(nh):
-    ax = axes[0, j]
-    ax.hist(boot[:, j], bins=20, color='steelblue', edgecolor='white', linewidth=0.4)
-    ax.axvline(beta_disc[j],      color='red',   lw=2, label='discovery (2k) estimate')
-    ax.axvline(boot[:, j].mean(), color='black', lw=1.5, ls='--', label='replication mean')
-    ax.set_title(f'{rsids_qc[hit_idx[j]]}  (|disc| reached {frac_reaching[j]:.0%})', fontsize=10)
-    ax.set_xlabel(r'$\\hat{\\beta}$ in 8k bootstrap')
-    if j == 0:
-        ax.set_ylabel('resamples (of 100)'); ax.legend(fontsize=8)
-plt.suptitle("Winner's curse: discovery estimate vs 8k replication bootstrap distribution", y=1.02)
+lim = np.abs(np.r_[disc_betas, val_betas]).max() * 1.15
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+ax.scatter(disc_betas, val_betas, s=45, alpha=0.8, color='steelblue', zorder=3)
+ax.plot([-lim, lim], [-lim, lim], 'r--', label='y = x (no bias)')
+ax.axhline(0, color='grey', lw=0.5); ax.axvline(0, color='grey', lw=0.5)
+ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+ax.set_xlabel('Discovery effect size (5k)'); ax.set_ylabel('Validation effect size (disjoint 5k)')
+ax.set_title("Winner's curse: discovery vs validation"); ax.legend(fontsize=8)
 plt.tight_layout(); plt.show()
-# A hit far above 5e-8 sits mid-distribution (little curse); marginal hits sit in the upper tail.
+# Validation effects tend to sit closer to zero (below |y=x|) → winner's curse.
 """
 
 S2_CQ6_MD = """\
@@ -2185,7 +2258,7 @@ def build_session1(answers=False, run=False, nb_path=None):
         *ex(S1_EX11_STUDENT, S1_EX11_SOL),
         *ex(S1_EX12_STUDENT, S1_EX12_SOL),
         md(S1_EX13_MD),
-        *ex(S1_EX13_STUDENT, S1_EX13_SOL),
+        code(S1_PROVIDE_HWE),
         code(S1_QC_APPLY),
         md(S1_PART2_MD),
         code(S1_PROVIDE_GWAS_FN),
@@ -2196,6 +2269,8 @@ def build_session1(answers=False, run=False, nb_path=None):
         code(S1_PROVIDE_LOGISTIC_FN),
         *ex(S1_EX31_STUDENT, S1_EX31_SOL),
         md(S1_CQ_MD),
+        md(S1_CQHWE_MD),
+        *ex(S1_CQHWE_STUDENT, S1_CQHWE_SOL),
         md(S1_CQ1_MD),
         *ex(S1_CQ1_STUDENT, S1_CQ1_SOL),
         md(S1_LZ_MD),
@@ -2205,7 +2280,10 @@ def build_session1(answers=False, run=False, nb_path=None):
         *ex(S1_CQ2B_STUDENT, S1_CQ2B_SOL),
         *ex(S1_CQ2C_STUDENT, S1_CQ2C_SOL),
         *ex(S1_CQ2D_STUDENT, S1_CQ2D_SOL),
-        code(S1_CQ2E_STUDENT) if not run else md(""),
+        md(S1_CQ4_MD),
+        *ex(S1_CQ4_STUDENT, S1_CQ4_SOL),
+        md(S1_CQ5_MD),
+        *ex(S1_CQ5_STUDENT, S1_CQ5_SOL),
     ]
     return notebook(cells)
 

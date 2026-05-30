@@ -8,17 +8,19 @@ Manhattan/QQ/trumpet/LocusZoom plots) is implemented from scratch with NumPy/Sci
 ## Sessions
 
 **Session 1 — Introduction to association testing** (`session1/`)
-Quality control (missingness, MAF, HWE), running linear and logistic GWAS, interpreting effect
-sizes, and three simulated phenotypes (a low-h² continuous trait, a ~10%-prevalence binary trait,
-and an uncorrelated fully-polygenic trait) on ~50k variants across chromosome 1.
-Challenges: dominant/recessive encodings, a manual LocusZoom plot, and a Drosophila linkage
-analysis à la Sturtevant (1913).
+Quality control (missingness, MAF, a provided HWE test), running linear and logistic GWAS,
+interpreting effect sizes, and three simulated phenotypes (a low-h² continuous trait, a
+~10%-prevalence binary trait, and an uncorrelated fully-polygenic trait) on ~50k variants across
+chromosome 1.
+Challenges: an HWE chi-squared test from scratch, dominant/recessive encodings, a manual LocusZoom
+plot, a Drosophila linkage analysis à la Sturtevant (1913), age-of-onset ascertainment, and
+polygenic scores (PGS).
 
 **Session 2 — Interpreting GWAS** (`session2/`)
 Genome-wide Manhattan plots, QQ plots and λ_GC, pleiotropy, and a trumpet/power-curve plot — built
 on **real Pan-UKB summary statistics** (EUR) for LDL cholesterol, coronary/ischaemic heart disease,
-and height. Challenges: QQ confidence bands, MAF-stratified QQ, winner's curse (bootstrap
-replication), and linking a real lead variant to the GWAS Catalog.
+and height. Challenges: QQ confidence bands, MAF-stratified QQ, winner's curse (discovery/validation
+resampling), and linking a real lead variant to the GWAS Catalog.
 Individual-level analyses (winner's curse, null-QQ contrast) reuse the simulated Session 1 cohort.
 
 ## Open in Colab
