@@ -894,95 +894,20 @@ These questions are for fast finishers and are not required in the 45-minute ses
 They connect directly to ideas from the lecture.
 """
 
-S1_CQHWE_MD = """\
-### Challenge {N}: HWE chi-squared test from scratch — ~10 min
-
-For QC we used the provided heterozygosity-based test (`compute_hwe_midp`). The classic HWE test
-is a **3-class chi-squared** comparing observed genotype counts (AA/AB/BB) to their HWE
-expectations $n p^2, 2npq, nq^2$. Implement it yourself and compare your p-values to the provided
-test — where do they agree, and where do they diverge?
-"""
-
-S1_CQHWE_STUDENT = """\
-# HWE chi-squared test (vectorised), compared to the provided test
-def compute_hwe_chisq(G):
-    \"\"\"Vectorised 3-class chi-squared HWE test; returns p-values of shape (M,).\"\"\"
-    G_int  = np.where(np.isnan(G), -1, G).astype(int)
-    n_samp = (G_int >= 0).sum(0).astype(float)   # non-missing count per variant
-    n_AA   = (G_int == 0).sum(0).astype(float)
-    n_AB   = (G_int == 1).sum(0).astype(float)
-    n_BB   = (G_int == 2).sum(0).astype(float)
-
-    # YOUR CODE — all vectorised over all M variants simultaneously
-    # ALT allele frequency: each copy of the ALT allele (BB = 2, AB = 1) contributes
-    p      = ???   # (2*n_BB + n_AB) / (2*n_samp)
-
-    # Expected genotype counts under HWE: P(0 ALT) = (1-p)², P(1 ALT) = 2p(1-p), P(2 ALT) = p²
-    exp_AA = ???
-    exp_AB = ???
-    exp_BB = ???
-
-    # Chi-squared: sum (obs - exp)² / exp, 1 degree of freedom
-    chi2   = ???
-
-    return stats.chi2.sf(chi2, df=1)
-
-hwe_chisq = compute_hwe_chisq(G_raw)
-
-# Compare to the provided heterozygosity test (hwe_pvals, from Exercise 1.3)
-fig, ax = plt.subplots(figsize=(5, 5))
-ax.scatter(-np.log10(hwe_pvals + 1e-15), -np.log10(hwe_chisq + 1e-15),
-           s=1, alpha=0.2, color='steelblue', rasterized=True)
-lim = max((-np.log10(hwe_pvals + 1e-15)).max(), (-np.log10(hwe_chisq + 1e-15)).max()) * 1.05
-ax.plot([0, lim], [0, lim], 'r--', linewidth=1)
-ax.set_xlabel('-log10(p) provided het test'); ax.set_ylabel('-log10(p) your chi-squared')
-ax.set_title('HWE: chi-squared vs heterozygosity test'); plt.tight_layout(); plt.show()
-
-print(f"Fail HWE (chi-sq, p<1e-6):   {(hwe_chisq < 1e-6).sum():,}")
-print(f"Fail HWE (het test, p<1e-6): {(hwe_pvals < 1e-6).sum():,}")
-print("Q: Where do the two tests agree? Where do they differ, and why?")
-"""
-
-S1_CQHWE_SOL = """\
-def compute_hwe_chisq(G):
-    G_int  = np.where(np.isnan(G), -1, G).astype(int)
-    n_samp = (G_int >= 0).sum(0).astype(float)
-    n_AA   = (G_int == 0).sum(0).astype(float)
-    n_AB   = (G_int == 1).sum(0).astype(float)
-    n_BB   = (G_int == 2).sum(0).astype(float)
-    p      = (2*n_BB + n_AB) / (2*n_samp + 1e-15)
-    exp_AA = n_samp * (1-p)**2
-    exp_AB = n_samp * 2*p*(1-p)
-    exp_BB = n_samp * p**2
-    chi2   = ((n_AA-exp_AA)**2/(exp_AA+1e-8) +
-              (n_AB-exp_AB)**2/(exp_AB+1e-8) +
-              (n_BB-exp_BB)**2/(exp_BB+1e-8))
-    return stats.chi2.sf(chi2, df=1)
-
-hwe_chisq = compute_hwe_chisq(G_raw)
-fig, ax = plt.subplots(figsize=(5, 5))
-ax.scatter(-np.log10(hwe_pvals + 1e-15), -np.log10(hwe_chisq + 1e-15),
-           s=1, alpha=0.2, color='steelblue', rasterized=True)
-lim = max((-np.log10(hwe_pvals + 1e-15)).max(), (-np.log10(hwe_chisq + 1e-15)).max()) * 1.05
-ax.plot([0, lim], [0, lim], 'r--', linewidth=1)
-ax.set_xlabel('-log10(p) provided het test'); ax.set_ylabel('-log10(p) your chi-squared')
-ax.set_title('HWE: chi-squared vs heterozygosity test'); plt.tight_layout(); plt.show()
-print(f"Fail HWE (chi-sq, p<1e-6):   {(hwe_chisq < 1e-6).sum():,}")
-print(f"Fail HWE (het test, p<1e-6): {(hwe_pvals < 1e-6).sum():,}")
-"""
-
 S1_CQ1_MD = """\
 ### Challenge {N}: Additive, dominant, and recessive models — ~10 min
 
 The standard GWAS uses an **additive** model: genotype is encoded 0/1/2 (copies of ALT allele),
-so the heterozygote AB is midway between AA and BB.
+so the heterozygote AB sits midway between AA and BB. We can write that encoding as a little
+look-up table, `additive = [0, 1, 2]` — "an AA is worth 0, an AB is worth 1, a BB is worth 2".
 
-But what if the true effect is **dominant** (AB ≈ BB, one copy is enough) or
-**recessive** (AB ≈ AA, two copies are needed)?
+But what if the true effect is **dominant** (one ALT copy is already enough → AB behaves like BB)
+or **recessive** (you need two ALT copies → AB behaves like AA)?
 
-Recoding:
-- **Dominant**: 0 → 0, 1 → 1, 2 → 1  (any ALT copy counts)
-- **Recessive**: 0 → 0, 1 → 0, 2 → 1  (only homozygous ALT counts)
+**Your task:** write the look-up tables `dominant` and `recessive` that capture those two genetic
+models — i.e. decide what value AA, AB and BB should map to under each. We give you a `recode()`
+helper that applies a look-up table to the genotype matrix; you do **not** need to write any
+indexing logic.
 
 Two variants in this dataset have non-additive effects — one dominant, one recessive.
 They may not be the genome-wide lead hit under the additive model!
@@ -992,10 +917,19 @@ S1_CQ1_STUDENT = """\
 # Find the non-additive loci
 import seaborn as sns
 
-# YOUR CODE HERE
-# Recode G_qc under dominant and recessive models
-G_dom = ???   # 0→0, 1→1, 2→1
-G_rec = ???   # 0→0, 1→0, 2→1
+# Provided: recode() applies a genotype look-up table to the whole genotype matrix.
+# mapping[g] is the value a genotype g (0=AA, 1=AB, 2=BB) is recoded to.
+def recode(G, mapping):
+    \"\"\"Recode genotypes 0/1/2 via a 3-element look-up table, e.g. [0, 1, 2] = additive.\"\"\"
+    return np.asarray(mapping, dtype=float)[G.astype(int)]
+
+additive = [0, 1, 2]            # worked example: AA→0, AB→1, BB→2  (the standard model)
+# YOUR CODE HERE: write the genetic look-up tables for the two non-additive models.
+dominant  = ???                 # e.g. one ALT copy is already "enough"
+recessive = ???                 # e.g. you need two ALT copies to see an effect
+
+G_dom = recode(G_qc, dominant)
+G_rec = recode(G_qc, recessive)
 
 covars = np.column_stack([(age - age.mean()) / age.std(), sex])
 betas_dom, _, pvals_dom = run_gwas(y_cont, G_dom, covars)
@@ -1026,8 +960,14 @@ print("Q: For the dominant hit, is AB closer to AA or BB? What about the recessi
 
 S1_CQ1_SOL = """\
 import seaborn as sns
-G_dom = np.where(G_qc >= 1, 1, 0).astype(float)
-G_rec = np.where(G_qc == 2, 1, 0).astype(float)
+def recode(G, mapping):
+    return np.asarray(mapping, dtype=float)[G.astype(int)]
+
+additive  = [0, 1, 2]
+dominant  = [0, 1, 1]          # AB behaves like BB: one ALT copy is enough
+recessive = [0, 0, 1]          # AB behaves like AA: need two ALT copies
+G_dom = recode(G_qc, dominant)
+G_rec = recode(G_qc, recessive)
 
 covars = np.column_stack([(age - age.mean()) / age.std(), sex])
 betas_dom, _, pvals_dom = run_gwas(y_cont, G_dom, covars)
@@ -1077,11 +1017,17 @@ region_mask = np.abs(pos_qc - pos_lead) < 1000   # ±1000 kbp = ±1 Mb
 print(f"Lead variant: {rsids_qc[j_lead]}  pos={pos_lead:,} kbp  p={pvals_cov[j_lead]:.2e}")
 print(f"Variants in region: {region_mask.sum():,}")
 
-# YOUR CODE HERE
-# Compute r² between each variant in the region and the lead variant.
-# Hint: r = np.corrcoef(g_lead, G_qc[:, k])[0,1]; r² = r**2
-g_lead = G_qc[:, j_lead]
-r2 = ???    # shape (region_mask.sum(),)
+# Provided: r2_with() returns the LD (r²) between one variant's genotypes and every column.
+def r2_with(genotypes, lead_genotype):
+    \"\"\"r² (LD) between `lead_genotype` and every column of `genotypes`.\"\"\"
+    gc = genotypes - genotypes.mean(0); lc = lead_genotype - lead_genotype.mean()
+    r = (gc * lc[:, None]).sum(0) / np.sqrt((gc**2).sum(0) * (lc @ lc) + 1e-300)
+    return r ** 2
+
+G_region = G_qc[:, region_mask]
+# YOUR CODE HERE: a LocusZoom colours each variant by its LD with the LEAD variant.
+# Which variant's genotype column should we measure LD against? Pass it to r2_with().
+r2 = r2_with(G_region, ???)              # the lead variant's genotypes: G_qc[:, j_lead]
 
 cmap = plt.cm.RdYlBu_r   # red = high LD, blue = low LD
 norm = mcolors.Normalize(vmin=0, vmax=1)
@@ -1100,11 +1046,15 @@ print("Q: Do the high-r² (red) variants form the tower? What happens to p as r�
 """
 
 S1_LZ_SOL = """\
+def r2_with(genotypes, lead_genotype):
+    gc = genotypes - genotypes.mean(0); lc = lead_genotype - lead_genotype.mean()
+    r = (gc * lc[:, None]).sum(0) / np.sqrt((gc**2).sum(0) * (lc @ lc) + 1e-300)
+    return r ** 2
+
 j_lead = np.argmin(pvals_cov); pos_lead = pos_qc[j_lead]
 region_mask = np.abs(pos_qc - pos_lead) < 1000
-g_lead = G_qc[:, j_lead]
 G_region = G_qc[:, region_mask]
-r2 = np.array([np.corrcoef(g_lead, G_region[:, k])[0,1]**2 for k in range(G_region.shape[1])])
+r2 = r2_with(G_region, G_qc[:, j_lead])
 
 cmap = plt.cm.RdYlBu_r; norm = mcolors.Normalize(vmin=0, vmax=1)
 fig, ax = plt.subplots(figsize=(12, 4))
@@ -1151,61 +1101,66 @@ S1_CQ2B_STUDENT = """\
 # Part A (continued)
 trait_cols = [c for c in fly_df.columns if c.startswith('trait_')]
 
-# YOUR CODE HERE
-# For each trait, compute the mean (= frequency of showing the trait) in males and females separately
-# Hint: fly_df.groupby('sex')[trait_cols].mean()
-freq_by_sex = ???
-
+# Provided: the frequency of each trait in females (sex=0) and males (sex=1).
+freq_by_sex = fly_df.groupby('sex')[trait_cols].mean()
 print(freq_by_sex.T)
-print("\\nWhich traits are X-linked? (large difference between males and females)")
-x_linked_traits = ???   # list of column names that are X-linked
+
+# An X-linked recessive trait shows up in ~half of males (one X) but almost no females (need two
+# copies); an autosomal trait appears at a similar frequency in both sexes.
+# YOUR CODE HERE: read the table above and list the trait names that look X-linked.
+x_linked_traits = ???           # e.g. ['trait_eye', 'trait_wing', ...]
+print("\\nX-linked traits:", x_linked_traits)
 """
 
 S1_CQ2B_SOL = """\
 trait_cols = [c for c in fly_df.columns if c.startswith('trait_')]
 freq_by_sex = fly_df.groupby('sex')[trait_cols].mean()
 print(freq_by_sex.T)
-# X-linked traits have freq ~0.5 in males and ~0 in females
+# X-linked traits have frequency ~0.5 in males and ~0 in females (read straight off the table).
 x_linked_traits = freq_by_sex.columns[(freq_by_sex.loc[1] > 0.3) & (freq_by_sex.loc[0] < 0.1)].tolist()
-print(f"\\nX-linked traits: {x_linked_traits}")
+print("\\nX-linked traits:", x_linked_traits)
 """
 
 S1_CQ2C_STUDENT = """\
-# Part B: Pairwise recombination frequencies
-# For X-linked traits, recombination frequency between genes A and B =
-# fraction of MALE offspring where the phenotype for A DIFFERS from phenotype for B.
-# (Non-recombinants have all traits in coupling; recombinants show a 'break' in the pattern.)
-
+# Part B: Pairwise recombination frequencies (X-linked genes, scored in males).
 males = fly_df[fly_df['sex'] == 1]
 
-# YOUR CODE HERE
-# Compute the pairwise recombination frequency matrix (n_X × n_X)
-# Hint: for traits i and j, recomb_freq[i,j] = fraction of males where trait_i != trait_j
+# The recombination frequency between two genes is the fraction of offspring that are
+# *recombinant* — i.e. carry a NEW combination of the two genes' alleles. In these males a
+# recombinant shows up as the phenotype for one trait DISAGREEING with the other.
+def recombination_frequency(trait_a, trait_b):
+    \"\"\"Fraction of males that are recombinant between trait_a and trait_b.\"\"\"
+    # YOUR CODE HERE: a male is recombinant when his two trait phenotypes disagree.
+    return ???                      # e.g. compare males[trait_a] with males[trait_b]
+
+# Provided: build the pairwise recombination-frequency matrix using your function.
 n_x = len(x_linked_traits)
 recomb_freq = np.zeros((n_x, n_x))
 for i, ti in enumerate(x_linked_traits):
     for j, tj in enumerate(x_linked_traits):
-        recomb_freq[i, j] = ???
-
+        recomb_freq[i, j] = recombination_frequency(ti, tj)
 print("Pairwise recombination frequencies (males only):")
-pd.DataFrame(recomb_freq, index=x_linked_traits, columns=x_linked_traits).round(3)
+print(pd.DataFrame(recomb_freq, index=x_linked_traits, columns=x_linked_traits).round(3))
 """
 
 S1_CQ2C_SOL = """\
 males = fly_df[fly_df['sex'] == 1]
+def recombination_frequency(trait_a, trait_b):
+    return (males[trait_a] != males[trait_b]).mean()
 n_x = len(x_linked_traits)
 recomb_freq = np.zeros((n_x, n_x))
 for i, ti in enumerate(x_linked_traits):
     for j, tj in enumerate(x_linked_traits):
-        recomb_freq[i, j] = (males[ti] != males[tj]).mean()
-print("Pairwise recombination frequencies:")
+        recomb_freq[i, j] = recombination_frequency(ti, tj)
+print("Pairwise recombination frequencies (males only):")
 print(pd.DataFrame(recomb_freq, index=x_linked_traits, columns=x_linked_traits).round(3))
 """
 
 S1_CQ2D_STUDENT = """\
-# Part C: Infer gene order and build the genetic map
-# Provided: the Haldane map function (recombination frequency → cM) so you don't have to
-# remember it, and the ground-truth positions so you can check your answer.
+# Part C (provided): turn your recombination frequencies into a genetic map and plot it.
+# This step is pure book-keeping — the genetics was in Parts A and B.
+# Provided: the Haldane map function (recombination frequency → cM), the gene ordering, the
+# ground-truth positions, and a plotting helper.
 
 def haldane_d(r):
     \"\"\"Recombination frequency r → map distance in cM (Haldane).\"\"\"
@@ -1214,34 +1169,9 @@ def haldane_d(r):
 D = haldane_d(recomb_freq)            # pairwise genetic distances (cM)
 np.fill_diagonal(D, 0.0)              # distance from a gene to itself is 0
 
-# HINT: on a *linear* chromosome the two genes that are FARTHEST apart are the two ENDS.
-# np.unravel_index converts a flattened argmax index back to (row, col):
-i_end, j_end = np.unravel_index(np.argmax(D), D.shape)
-
-# YOUR CODE HERE
-# Order all genes by their distance from one end (i_end), then read off the map.
-order          = ???                 # np.argsort(D[i_end])
-ordered_traits = ???                 # x_linked_traits in that order
-ordered_pos    = ???                 # their distance from i_end (cM)
-
-print("Inferred gene order (cM from one end):")
-for t, p in zip(ordered_traits, ordered_pos):
-    print(f"  {t:14s} {p:5.1f} cM")
-
-# Ground truth — check your inferred order/spacing against this (up to a left-right flip):
-TRUE_POS = {'trait_eye': 0, 'trait_wing': 5, 'trait_leg': 15,
-            'trait_notch': 30, 'trait_vein': 35, 'trait_scute': 50}
-print("\\nGround truth (cM):", TRUE_POS)
-"""
-
-S1_CQ2D_SOL = """\
-def haldane_d(r):
-    return -50 * np.log(1 - 2*np.clip(r, 0, 0.499))
-
-D = haldane_d(recomb_freq)
-np.fill_diagonal(D, 0.0)
-i_end, j_end = np.unravel_index(np.argmax(D), D.shape)   # the two farthest-apart genes = ends
-
+# On a *linear* chromosome the two genes that are FARTHEST apart are the two ENDS;
+# ordering the rest by their distance from one end reconstructs the gene order.
+i_end, j_end   = np.unravel_index(np.argmax(D), D.shape)
 order          = np.argsort(D[i_end])
 ordered_traits = [x_linked_traits[k] for k in order]
 ordered_pos    = D[i_end][order]
@@ -1250,8 +1180,37 @@ print("Inferred gene order (cM from one end):")
 for t, p in zip(ordered_traits, ordered_pos):
     print(f"  {t:14s} {p:5.1f} cM")
 
+# Ground truth — check your inferred order/spacing against this (up to a left-right flip):
 TRUE_POS = {'trait_eye': 0, 'trait_wing': 5, 'trait_leg': 15,
             'trait_notch': 30, 'trait_vein': 35, 'trait_scute': 50}
+
+def plot_gene_map(predicted_pos, true_pos):
+    \"\"\"Provided: plot your estimated gene map against the ground truth on two cM axes.
+    Gene order is only defined up to a left-right flip, so we flip the estimate if that
+    lines it up better with the truth.\"\"\"
+    genes = list(true_pos)
+    tpos  = np.array([true_pos[g] for g in genes], float)
+    ppos  = np.array([predicted_pos[g] for g in genes], float)
+    if np.corrcoef(ppos, tpos)[0, 1] < 0:        # flip so left/right match the truth
+        ppos = ppos.max() - ppos
+    pmap = dict(zip(genes, ppos))
+    fig, ax = plt.subplots(figsize=(9, 2.8))
+    for y, pos, col in [(1, tpos, '#4e79a7'), (0, ppos, '#e15759')]:
+        ax.hlines(y, min(tpos.min(), ppos.min()), max(tpos.max(), ppos.max()),
+                  color='lightgrey', zorder=1)
+        ax.scatter(pos, [y]*len(pos), color=col, s=40, zorder=3)
+        for g, x in zip(genes, pos):
+            ax.text(x, y + 0.10, g.replace('trait_', ''), rotation=40,
+                    ha='left', va='bottom', fontsize=8)
+    for g in genes:                               # connect the same gene across the two maps
+        ax.plot([true_pos[g], pmap[g]], [1, 0], color='grey', lw=0.6, ls=':', zorder=2)
+    ax.set_yticks([0, 1]); ax.set_yticklabels(['estimated', 'true'])
+    ax.set_ylim(-0.5, 1.7); ax.set_xlabel('position (cM)')
+    ax.set_title('Estimated vs true gene order'); plt.tight_layout(); plt.show()
+
+# Build your inferred map as a dict and plot it against the ground truth.
+predicted_pos = dict(zip(ordered_traits, ordered_pos))
+plot_gene_map(predicted_pos, TRUE_POS)
 print("\\nGround truth (cM):", TRUE_POS)
 """
 
@@ -2021,11 +1980,21 @@ Stratify the real BMI variants into MAF bins and overlay QQ plots (random subset
 """
 
 S2_CQ2_STUDENT = """\
-# MAF-stratified QQ plot (real BMI GWAS, random subset)
-sub      = real['bmi']['rand']
-maf_h    = real['bmi']['maf'][sub]
-nlp_h    = real['bmi']['nlog10p'][sub]
-maf_bins = [(0.005, 0.01), (0.01, 0.05), (0.05, 0.15), (0.15, 0.50)]
+# MAF-stratified QQ plot (real BMI GWAS, random subset).
+sub   = real['bmi']['rand']
+maf_h = real['bmi']['maf'][sub]
+nlp_h = real['bmi']['nlog10p'][sub]
+
+# Provided: QQ coordinates (expected vs observed -log10 p) for a set of p-values.
+def qq_coords(nlog10p):
+    \"\"\"Return (expected, observed) -log10(p) for a QQ plot, thinned for display.\"\"\"
+    obs  = np.sort(nlog10p); m = len(obs)
+    exp  = -np.log10(np.arange(m, 0, -1) / (m + 1))
+    keep = np.unique(np.r_[_thin(m, k=4000), np.where(obs >= 2)[0]])   # thin bulk, keep tail
+    return exp[keep], obs[keep]
+
+# YOUR CODE HERE: choose how to split variants by minor allele frequency, from rare to common.
+maf_bins = ???        # list of (low, high) MAF ranges, e.g. [(0.005, 0.01), (0.01, 0.05), ...]
 colours  = ['#b07aa1', '#e15759', '#f28e2b', '#4e79a7']
 
 fig, ax = plt.subplots(figsize=(6, 6)); exp_max = 0
@@ -2033,10 +2002,7 @@ for (lo, hi), col in zip(maf_bins, colours):
     mask = (maf_h >= lo) & (maf_h < hi)
     if mask.sum() < 10:
         continue
-    # YOUR CODE HERE: build the QQ coordinates for this stratum and scatter them
-    # obs = sorted nlog10p in this bin (ascending); exp = -log10 of expected order stats
-    obs = ???
-    exp = ???
+    exp, obs = qq_coords(nlp_h[mask])
     ax.scatter(exp, obs, s=3, alpha=0.5, color=col, label=f'MAF [{lo:.1%}, {hi:.0%})')
     exp_max = max(exp_max, exp.max())
 
@@ -2048,9 +2014,16 @@ print("Q: Common variants carry most of BMI's association signal — does the pl
 """
 
 S2_CQ2_SOL = """\
-sub      = real['bmi']['rand']
-maf_h    = real['bmi']['maf'][sub]
-nlp_h    = real['bmi']['nlog10p'][sub]
+sub   = real['bmi']['rand']
+maf_h = real['bmi']['maf'][sub]
+nlp_h = real['bmi']['nlog10p'][sub]
+
+def qq_coords(nlog10p):
+    obs  = np.sort(nlog10p); m = len(obs)
+    exp  = -np.log10(np.arange(m, 0, -1) / (m + 1))
+    keep = np.unique(np.r_[_thin(m, k=4000), np.where(obs >= 2)[0]])
+    return exp[keep], obs[keep]
+
 maf_bins = [(0.005, 0.01), (0.01, 0.05), (0.05, 0.15), (0.15, 0.50)]
 colours  = ['#b07aa1', '#e15759', '#f28e2b', '#4e79a7']
 
@@ -2059,10 +2032,8 @@ for (lo, hi), col in zip(maf_bins, colours):
     mask = (maf_h >= lo) & (maf_h < hi)
     if mask.sum() < 10:
         continue
-    obs = np.sort(nlp_h[mask]); m = len(obs)
-    exp = -np.log10(np.arange(m, 0, -1) / (m + 1))
-    d = np.unique(np.r_[_thin(m, k=4000, seed=int(lo*1000)), np.where(obs >= 2)[0]])
-    ax.scatter(exp[d], obs[d], s=3, alpha=0.5, color=col, label=f'MAF [{lo:.1%}, {hi:.0%})')
+    exp, obs = qq_coords(nlp_h[mask])
+    ax.scatter(exp, obs, s=3, alpha=0.5, color=col, label=f'MAF [{lo:.1%}, {hi:.0%})')
     exp_max = max(exp_max, exp.max())
 ax.plot([0, exp_max], [0, exp_max], 'k--', linewidth=1); ax.set_xlim(0, exp_max)
 ax.set_title('MAF-stratified QQ plot — real BMI GWAS')
@@ -2102,15 +2073,15 @@ maf_grid = np.logspace(np.log10(0.005), np.log10(0.5), 300)
 
 fig, ax = plt.subplots(figsize=(9, 6))
 
-# YOUR CODE HERE
-# 1. Scatter signed beta vs MAF for the non-significant random-subset variants (grey, small)
-???
+# Provided: scatter signed beta vs MAF — grey for the random subset, coloured for the GWAS hits.
+ax.scatter(maf_l[rnd_l], beta_l[rnd_l], s=3, alpha=0.15, color='grey', rasterized=True)
+ax.scatter(maf_l[sig_l], beta_l[sig_l], s=12, alpha=0.6, color='steelblue', label='genome-wide sig')
 
-# 2. Scatter signed beta vs MAF for genome-wide-significant variants (coloured, larger)
-???
-
-# 3. Overlay ±power curves for N=10,000, N=100,000, N=400,000 (≈ the real study size)
-for n_samples, col in [(10_000, '#e15759'), (100_000, '#f28e2b'), (400_000, '#59a14f')]:
+# A bigger study can detect smaller effects, so its power band is narrower. Overlay the ±power
+# curves for a few study sizes — including one close to the real LDL GWAS (N ≈ 400k).
+# YOUR CODE HERE: choose the study sizes (number of individuals) to compare.
+study_sizes = ???        # e.g. [10_000, 100_000, 400_000]
+for n_samples, col in zip(study_sizes, ['#e15759', '#f28e2b', '#59a14f']):
     pb = power_curve(n_samples, maf_grid)
     ax.plot(maf_grid, +pb, color=col, linewidth=1.5, label=f'N={n_samples:,}')
     ax.plot(maf_grid, -pb, color=col, linewidth=1.5, linestyle='--')
@@ -2326,10 +2297,13 @@ S2_CSQ_STUDENT = """\
 # Part B: among significant exome variants, do effect sizes differ by consequence?
 EXOME_SIG = 1e-6                                  # exome-wide significance threshold
 significant_exome = genebass[genebass['pval'] < EXOME_SIG].copy()
+print("Consequence (CSQ) types present:", sorted(significant_exome['CSQ'].unique()))
 
-# Group each variant's consequence (CSQ) into synonymous / missense / pLoF.
-PLOF = {'stop_gained', 'frameshift_variant', 'splice_donor_variant',
-        'splice_acceptor_variant', 'start_lost'}
+# A variant's consequence (CSQ) describes what it does to the protein. We compare three classes:
+# synonymous (silent), missense (one amino-acid change), and pLoF (protein loss-of-function).
+# YOUR CODE HERE: which CSQ values are protein-loss-of-function (truncating/disrupting the protein)?
+PLOF = ???      # a set of CSQ strings, e.g. {'stop_gained', 'frameshift_variant', ...}
+
 def consequence_group(csq):
     if csq in PLOF:                 return 'pLoF'          # protein loss-of-function
     if csq == 'missense_variant':   return 'missense'
@@ -2338,8 +2312,9 @@ def consequence_group(csq):
 significant_exome['group'] = significant_exome['CSQ'].map(consequence_group)
 
 groups = ['synonymous', 'missense', 'pLoF']
-# YOUR CODE HERE: for each group, the array of ABSOLUTE effect sizes |beta|.
-abs_beta_by_group = [ ??? for g in groups ]
+# Provided: the absolute effect sizes |Beta| for each consequence class.
+abs_beta_by_group = [ significant_exome.loc[significant_exome['group'] == g, 'beta'].abs().values
+                      for g in groups ]
 
 fig, ax = plt.subplots(figsize=(7, 5))
 ax.boxplot(abs_beta_by_group, showfliers=False)
@@ -2393,9 +2368,15 @@ The genome-wide threshold $5\\times10^{-8}$ is essentially a **Bonferroni** corr
 family-wise error rate $\\alpha_{FW}$ over $C$ tests, use per-test $\\alpha_{PT}=\\alpha_{FW}/C$
 (with $\\alpha_{FW}=0.05$, $C\\approx10^6$ independent common variants).
 
-**Šidák** is exact *under independence*: requiring $P(\\text{no false positive})=(1-\\alpha_{PT})^{C}
-=1-\\alpha_{FW}$ gives $\\alpha_{PT}=1-(1-\\alpha_{FW})^{1/C}$. Solve it and compare to Bonferroni
-across a range of $C$ (see Abdi, 2007).
+**Šidák** is exact *under independence*. With $C$ independent tests each at per-test threshold
+$\\alpha_{PT}$, the probability of **no** false positive is $(1-\\alpha_{PT})^{C}$, so the
+family-wise error rate is
+
+$$\\alpha_{FW} = 1 - (1-\\alpha_{PT})^{C}.$$
+
+**Your job: solve this equation for the per-test threshold $\\alpha_{PT}$** (in terms of
+$\\alpha_{FW}$ and $C$), implement it, and compare to Bonferroni ($\\alpha_{FW}/C$) across a range of
+$C$ — including the **ratio** of the two thresholds (see Abdi, 2007).
 """
 
 S2_SIDAK_STUDENT = """\
@@ -2404,22 +2385,33 @@ alpha_familywise = 0.05
 C = np.logspace(0, 7, 200)                      # number of tests, from 1 to 10^7
 
 bonferroni_threshold = alpha_familywise / C
-# YOUR CODE HERE: the Šidák per-test threshold, alpha_PT = 1 - (1 - alpha_FW)^(1/C).
+# YOUR CODE HERE: solve  alpha_FW = 1 - (1 - alpha_PT)^C  for the per-test threshold alpha_PT,
+# then evaluate it for every number of tests C.
 sidak_threshold = ???
+# YOUR CODE HERE: the ratio of the Šidák to the Bonferroni threshold at each C.
+ratio = ???
 
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.loglog(C, bonferroni_threshold, color='#4e79a7', label=r'Bonferroni: $\\alpha_{FW}/C$')
-ax.loglog(C, sidak_threshold, '--', color='#e15759',
-          label=r'Šidák: $1-(1-\\alpha_{FW})^{1/C}$')
-ax.axvline(1e6, color='grey', ls=':', label=r'$\\approx$1M independent tests')
-ax.axhline(5e-8, color='black', ls=':', label=r'$5\\times10^{-8}$')
-ax.set_xlabel('number of tests, C'); ax.set_ylabel('per-test significance threshold')
-ax.set_title('Bonferroni vs Šidák'); ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+# Left: the two thresholds vs C.
+ax1.loglog(C, bonferroni_threshold, color='#4e79a7', label=r'Bonferroni: $\\alpha_{FW}/C$')
+ax1.loglog(C, sidak_threshold, '--', color='#e15759', label=r'Šidák: $1-(1-\\alpha_{FW})^{1/C}$')
+ax1.axvline(1e6, color='grey', ls=':', label=r'$\\approx$1M independent tests')
+ax1.axhline(5e-8, color='black', ls=':', label=r'$5\\times10^{-8}$')
+ax1.set_xlabel('number of tests, C'); ax1.set_ylabel('per-test significance threshold')
+ax1.set_title('Per-test threshold'); ax1.legend(fontsize=8)
+# Right: the Šidák / Bonferroni ratio vs C.
+ax2.semilogx(C, ratio, color='#59a14f')
+ax2.axhline(1.0, color='grey', ls=':')
+ax2.axvline(1e6, color='grey', ls=':')
+ax2.set_xlabel('number of tests, C'); ax2.set_ylabel('Šidák / Bonferroni threshold')
+ax2.set_title('Ratio of the two thresholds')
+plt.tight_layout(); plt.show()
 
 at_1e6 = np.argmin(np.abs(C - 1e6))
 print(f"At C=1e6:  Bonferroni={bonferroni_threshold[at_1e6]:.3e}, "
-      f"Šidák={sidak_threshold[at_1e6]:.3e}, ratio={sidak_threshold[at_1e6]/bonferroni_threshold[at_1e6]:.4f}")
-print("Q: Which is more conservative, and why do the two converge for large C?")
+      f"Šidák={sidak_threshold[at_1e6]:.3e}, ratio={ratio[at_1e6]:.4f}")
+print("Q: The ratio is largest at small C and tends to ~1 as C grows — why?")
+print("Q: Which correction is more conservative, and does the difference ever matter in practice?")
 """
 
 S2_SIDAK_SOL = """\
@@ -2428,21 +2420,27 @@ C = np.logspace(0, 7, 200)
 
 bonferroni_threshold = alpha_familywise / C
 sidak_threshold = 1 - (1 - alpha_familywise)**(1.0 / C)
+ratio = sidak_threshold / bonferroni_threshold
 
-fig, ax = plt.subplots(figsize=(7, 5))
-ax.loglog(C, bonferroni_threshold, color='#4e79a7', label=r'Bonferroni: $\\alpha_{FW}/C$')
-ax.loglog(C, sidak_threshold, '--', color='#e15759',
-          label=r'Šidák: $1-(1-\\alpha_{FW})^{1/C}$')
-ax.axvline(1e6, color='grey', ls=':', label=r'$\\approx$1M independent tests')
-ax.axhline(5e-8, color='black', ls=':', label=r'$5\\times10^{-8}$')
-ax.set_xlabel('number of tests, C'); ax.set_ylabel('per-test significance threshold')
-ax.set_title('Bonferroni vs Šidák'); ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+ax1.loglog(C, bonferroni_threshold, color='#4e79a7', label=r'Bonferroni: $\\alpha_{FW}/C$')
+ax1.loglog(C, sidak_threshold, '--', color='#e15759', label=r'Šidák: $1-(1-\\alpha_{FW})^{1/C}$')
+ax1.axvline(1e6, color='grey', ls=':', label=r'$\\approx$1M independent tests')
+ax1.axhline(5e-8, color='black', ls=':', label=r'$5\\times10^{-8}$')
+ax1.set_xlabel('number of tests, C'); ax1.set_ylabel('per-test significance threshold')
+ax1.set_title('Per-test threshold'); ax1.legend(fontsize=8)
+ax2.semilogx(C, ratio, color='#59a14f')
+ax2.axhline(1.0, color='grey', ls=':')
+ax2.axvline(1e6, color='grey', ls=':')
+ax2.set_xlabel('number of tests, C'); ax2.set_ylabel('Šidák / Bonferroni threshold')
+ax2.set_title('Ratio of the two thresholds')
+plt.tight_layout(); plt.show()
 
 at_1e6 = np.argmin(np.abs(C - 1e6))
 print(f"At C=1e6:  Bonferroni={bonferroni_threshold[at_1e6]:.3e}, "
-      f"Šidák={sidak_threshold[at_1e6]:.3e}, ratio={sidak_threshold[at_1e6]/bonferroni_threshold[at_1e6]:.4f}")
-# Bonferroni is marginally more conservative (smaller threshold); for small alpha_FW/C the two are
-# almost identical, since 1-(1-a)^(1/C) ≈ a/C.
+      f"Šidák={sidak_threshold[at_1e6]:.3e}, ratio={ratio[at_1e6]:.4f}")
+# Šidák is always slightly LESS conservative (ratio > 1), most so at small C; as C grows
+# 1-(1-a)^(1/C) ≈ a/C, so the ratio tends to 1 and the practical difference vanishes.
 """
 
 
@@ -2488,9 +2486,8 @@ def build_session1(answers=False, run=False, nb_path=None):
         code(S1_PROVIDE_LOGISTIC_FN),
         *ex(S1_EX31_STUDENT, S1_EX31_SOL),
         md(S1_CQ_MD),
-        # Challenge order: QC → encoding → stratification → study design → interpretation
+        # Challenge order: encoding → stratification → study design → interpretation
         #                  → capstone
-        chmd(S1_CQHWE_MD), *ex(S1_CQHWE_STUDENT, S1_CQHWE_SOL),
         chmd(S1_CQ1_MD),   *ex(S1_CQ1_STUDENT, S1_CQ1_SOL),
         chmd(S1_CQSEX_MD), *ex(S1_CQSEX_STUDENT, S1_CQSEX_SOL),
         chmd(S1_CQ4_MD),   *ex(S1_CQ4_STUDENT, S1_CQ4_SOL),
@@ -2499,7 +2496,7 @@ def build_session1(answers=False, run=False, nb_path=None):
         code(S1_CQ2_STUDENT) if not run else md(""),
         *ex(S1_CQ2B_STUDENT, S1_CQ2B_SOL),
         *ex(S1_CQ2C_STUDENT, S1_CQ2C_SOL),
-        *ex(S1_CQ2D_STUDENT, S1_CQ2D_SOL),
+        code(S1_CQ2D_STUDENT),                  # Part C is fully provided (book-keeping + plot)
     ]
     return notebook(cells)
 

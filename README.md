@@ -56,8 +56,8 @@ automatically (no manual download needed).
 
 - **Worksheet** (`practical.ipynb`) — skeleton code with `???` blanks for students to complete.
 - **Answers** (`answers.ipynb`) — same notebook with collapsible solution cells.
-- **Executed** (`run.ipynb`) — fully run, for reference / instructors. Static HTML renders are in
-  `session{1,2}/summary_session{1,2}.html`.
+- **Executed** (`run.ipynb`) — fully run, for reference / instructors. Static HTML renders of all
+  four sessions are in `session{1,2,3,4}/summary_session{1,2,3,4}.html`.
 
 ## Running locally
 

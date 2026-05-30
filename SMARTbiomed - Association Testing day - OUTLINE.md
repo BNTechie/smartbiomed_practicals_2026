@@ -12,6 +12,7 @@ Practicals:
 - The primary input data for the practicals should be pre-generated. 
 - Library preferences: Generally, try to keep things lightweight, unless using a larger package makes code significantly more readable. Store large matrices in numpy. Prefer matplotlib over seaborn, unless absolutely necessary. scipy.stats over statsmodels, unless there are really simple one-liner functions in statsmodels that make the code more readable. Avoid using plink or regenie - we want to build intuition for what those packages are doing under the hood.
 - Where possible, streamline the coding to emphasise building intuition rather than relying on knowing special functions or having skill in python. Metaphorically, students should be given the lego pieces and asked to understand how to put them together. Make it easy for them to understand the logic behind everything.*-
+  - Implemented accordingly: in the **challenge** questions the numpy/pandas plumbing is provided (helpers like `recode`, `r2_with`, `recombination_frequency`, `qq_coords`), so each blank is a *genetic/conceptual* choice (the recoding table, which traits are X-linked, what a recombinant is, which consequences are loss-of-function, how to bin by MAF). The morning's main from-scratch exercises (missingness/MAF/`run_gwas`/QQ/λ_GC/Manhattan) and the afternoon core methods (PCA via SVD, the GRM, the Wakefield Bayes factor) keep their under-the-hood implementations.
 - Student profile: Assume students have at least an introductory course-level of statistics background. They should be familiar with standard Python packages (or be able to use AI tools to help them). These are early career researchers, likely graduate students and postdocs.
 
 SCHEDULE
@@ -68,15 +69,14 @@ MORNING (Nik)
     - Dichotomous trait `y_bin`: liability-threshold model on `y_cont`, ~10% prevalence (90th percentile).
     - Third trait `y_poly`: fully polygenic, very low h² (≈0.02), **uncorrelated** with `y_cont` (used in Session 2 null-QQ contrast).
     - Covariates: UKB-like age distribution (decile-interpolated, ~37–73) and sex.
-  - Main exercises: plot phenotype/covariate distributions; missingness/MAF QC; a provided HWE mid-p test; run linear & logistic GWAS; interpret effect sizes.
-  - Challenge questions (auto-numbered, time-tagged; order = QC → encoding → study design → interpretation → capstone):
-    1. **HWE from scratch** (~10 min): compute HWE with a **chi-squared** test and compare to the provided mid-p values; show a scatter of expected vs. observed heterozygosity with HWE-violating points flagged.
-    2. **Dominant / recessive encodings** (~10 min): re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS to recover the two injected non-additive loci.
-    3. **Sex-stratified GWAS** (~10 min): run GWAS separately in males and females; find the sign-flipped sex-specific locus.
-    4. **Ascertainment by age of onset** (~10 min): turn all `y_bin` cases younger than 60 into controls and watch the hits change.
-    5. **Manual LocusZoom** (~12 min): r²-coloured regional plot on the simulated cohort (where individual genotypes allow LD colouring).
-    6. **Drosophila linkage analysis** (~25 min): as Sturtevant (1913) — determine which traits are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly columns are deliberately renamed so the linkage isn't given away; `data/fly_data.csv`. Provide ground-truth cM, the fiddly helpers (`unravel_index`, `fill_diagonal`), the ends-of-sequence hint, Haldane's map function by default, and a function to plot predictions (a dict) vs ground truth.
-    - *(The PGS / genetic-component challenge was dropped — the low-h², 3-causal data is too sparse for an instructive prediction exercise.)*
+  - Main exercises: plot phenotype/covariate distributions; missingness/MAF/HWE QC (a HWE mid-p test is provided); run linear & logistic GWAS; interpret effect sizes.
+  - Challenge questions (auto-numbered, time-tagged; order = encoding → study design → interpretation → capstone):
+    1. **Dominant / recessive encodings** (~10 min): re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS to recover the two injected non-additive loci.
+    2. **Sex-stratified GWAS** (~10 min): run GWAS separately in males and females; find the sign-flipped sex-specific locus.
+    3. **Ascertainment by age of onset** (~10 min): turn all `y_bin` cases younger than 60 into controls and watch the hits change.
+    4. **Manual LocusZoom** (~12 min): r²-coloured regional plot on the simulated cohort (where individual genotypes allow LD colouring).
+    5. **Drosophila linkage analysis** (~25 min): as Sturtevant (1913) — determine which traits are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly columns are deliberately renamed so the linkage isn't given away; `data/fly_data.csv`. Provide ground-truth cM, the fiddly helpers (`unravel_index`, `fill_diagonal`), the ends-of-sequence hint, Haldane's map function, and a provided function to plot the **estimated vs true gene order**.
+    - *(The PGS / genetic-component challenge was dropped — the low-h², 3-causal data is too sparse for an instructive prediction exercise. The HWE chi-squared-vs-mid-p challenge was also removed; HWE QC stays in the main exercises.)*
     
 
 **Session 2: Interpreting GWAS**
@@ -130,7 +130,7 @@ MORNING (Nik)
     3. **Trumpet plot** (~12 min): signed beta vs MAF (log-x) from real LDL, with ±power curves for N=10k/100k/400k.
     4. **Winner's curse** (~15 min): resample a **5k discovery** cohort until 3 replicates each have a hit, validate those hits in a **disjoint 5k** sample, scatter discovery vs validation effect sizes (regression to the mean).
     5. **GWAS × exome Miami plot** (~12 min): single-chromosome Miami (default chr16) of the Pan-UKB common-variant GWAS (up) vs the Genebass exome single-variant results (down) for BMI — noting the **GRCh37 vs GRCh38** build mismatch (no liftover) — then compare effect sizes of significant exome variants by **consequence** (synonymous < missense < pLoF).
-    6. **Bonferroni vs Šidák** (~8 min): solve per-test α from the family-wise rate for C tests, Šidák `1−(1−α)^(1/C)` vs Bonferroni `α/C`, compared across C (Abdi 2007).
+    6. **Bonferroni vs Šidák** (~8 min): solve per-test α from the family-wise rate for C tests, Šidák `1−(1−α)^(1/C)` vs Bonferroni `α/C`, and plot their **ratio across a range of C** (largest at small C, → 1 as C grows). (Abdi 2007.)
   - *(The Manual LocusZoom plot moved to Session 1, where individual genotypes allow r² colouring. The GWAS-Catalog REST-API challenge was retired in favour of the Genebass exome challenge above.)*
 
 AFTERNOON (Pier)
