@@ -8,7 +8,7 @@ to a small bundled artefact, and writes data/sumstats_real.npz.
 Traits (parallel to the simulated y_cont / y_bin / y_poly):
   - ldl    : LDL direct           (continuous biomarker, field 30780)
   - cad    : I25 chronic ischaemic heart disease (binary, ICD10)
-  - height : standing height      (highly polygenic continuous, field 50)
+  - bmi    : body mass index      (highly polygenic continuous, field 21001)
 
 The Pan-UKB flat files are ~2-2.7 GB each. Rather than storing them, we STREAM
 (curl | gzip -dc | awk) and thin on the fly:
@@ -39,7 +39,7 @@ TMP_DIR = Path("/tmp")
 TRAITS = {
     "ldl":    "https://pan-ukb-us-east-1.s3.amazonaws.com/sumstats_flat_files/biomarkers-30780-both_sexes-irnt.tsv.bgz",
     "cad":    "https://pan-ukb-us-east-1.s3.amazonaws.com/sumstats_flat_files/icd10-I25-both_sexes.tsv.bgz",
-    "height": "https://pan-ukb-us-east-1.s3.amazonaws.com/sumstats_flat_files/continuous-50-both_sexes-irnt.tsv.bgz",
+    "bmi":    "https://pan-ukb-us-east-1.s3.amazonaws.com/sumstats_flat_files/continuous-21001-both_sexes-irnt.tsv.bgz",
 }
 
 POP        = "EUR"      # homogeneous-ancestry analysis (matches lecture framing)

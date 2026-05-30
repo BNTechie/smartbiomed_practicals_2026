@@ -21,8 +21,9 @@ polygenic scores (PGS).
 **Session 2 — Interpreting GWAS** (`session2/`)
 Genome-wide Manhattan plots, QQ plots and λ_GC, pleiotropy, and a trumpet/power-curve plot — built
 on **real Pan-UKB summary statistics** (EUR) for LDL cholesterol, coronary/ischaemic heart disease,
-and height. Challenges: QQ confidence bands, MAF-stratified QQ, winner's curse (discovery/validation
-resampling), and linking a real lead variant to the GWAS Catalog.
+and body mass index. Challenges: QQ confidence bands (a near-null trait vs polygenic BMI),
+MAF-stratified QQ, winner's curse (discovery/validation resampling), a **GWAS × Genebass exome
+Miami plot** with effect sizes by variant consequence, and Bonferroni vs Šidák.
 Individual-level analyses (winner's curse, null-QQ contrast) reuse the simulated Session 1 cohort.
 
 **Session 3 — Complexities of GWAS: population structure & relatedness** (`session3/`)
@@ -67,6 +68,7 @@ jupyter notebook session1/practical.ipynb
 
 Data lives in `data/` (tracked with **Git LFS**): `gwas_data.npz` (Session 1/2 genotypes +
 phenotypes), `fly_data.csv` (Drosophila cross), `sumstats_real.npz` (thinned Pan-UKB sumstats),
+`genebass_bmi_exomes.csv` (Genebass BMI exome variants),
 `pca_data.npz` (Session 3 cohort + reference panel), `finemap_data.npz` (Session 4 loci).
 With Git LFS installed, `git clone` fetches them; otherwise the notebooks download them on first run.
 
@@ -75,7 +77,7 @@ With Git LFS installed, `git clone` fetches them; otherwise the notebooks downlo
 | Script | Purpose |
 |---|---|
 | `generate_data.py` | Simulate the Session 1/2 genotypes + phenotypes and the fly cross → `data/`. |
-| `fetch_sumstats.py` | Download + thin the real Pan-UKB LDL/CAD/height sumstats → `data/sumstats_real.npz`. |
+| `fetch_sumstats.py` | Download + thin the real Pan-UKB LDL/CAD/BMI sumstats → `data/sumstats_real.npz`. |
 | `generate_pca_data.py` | Simulate Session 3 structured-population data → `data/pca_data.npz`. |
 | `generate_finemap_data.py` | Simulate Session 4 fine-mapping loci → `data/finemap_data.npz`. |
 | `create_notebooks.py` | Build all twelve notebooks from the shared source. |

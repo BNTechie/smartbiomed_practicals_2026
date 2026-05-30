@@ -11,7 +11,7 @@ Practicals:
 - Create answer sheet for students to check answers after class (or during practical, if stuck). The answer sheet should be the same notebook, with hidden/commented-out solution cells. Include hints in the worksheet notebook if students are stuck. If they are really stuck, they can simply refer to the answer sheet notebook.
 - The primary input data for the practicals should be pre-generated. 
 - Library preferences: Generally, try to keep things lightweight, unless using a larger package makes code significantly more readable. Store large matrices in numpy. Prefer matplotlib over seaborn, unless absolutely necessary. scipy.stats over statsmodels, unless there are really simple one-liner functions in statsmodels that make the code more readable. Avoid using plink or regenie - we want to build intuition for what those packages are doing under the hood.
-
+- Where possible, streamline the coding to emphasise building intuition rather than relying on knowing special functions or having skill in python. Metaphorically, students should be given the lego pieces and asked to understand how to put them together. Make it easy for them to understand the logic behind everything.*-
 - Student profile: Assume students have at least an introductory course-level of statistics background. They should be familiar with standard Python packages (or be able to use AI tools to help them). These are early career researchers, likely graduate students and postdocs.
 
 SCHEDULE
@@ -62,19 +62,21 @@ MORNING (Nik)
   - Age, sex, ancestry (tease PCA; mention Ancestry Components as alternative to PCs?), location/assessment centre, genotyping platform?
 
 - Practical (implemented in `session1/`)
-  - Run simple regression on a pre-generated simulated toy dataset (~105k variants on chr1, 10k samples of homogeneous ancestry; provided to students as `data/gwas_data.npz`).
+  - Run simple regression on a pre-generated simulated toy dataset (~50k post-QC variants on chr1, 10k samples of homogeneous ancestry; provided to students as `data/gwas_data.npz`).
     - Genotypes simulated with block-LD structure (not a 1000G matrix); MAF 0.5–50% with ~3k injected rare variants (0.1–1%) so students must do MAF QC; plus injected HWE failures and missingness tiers.
     - Continuous trait `y_cont`: low h² (≈0.035), spike-and-slab with only **3** causal variants, MAF-dependent effect sizes (no large-effect common variants), plus one injected **dominant** and one **recessive** locus. Flip effect in one causal SNP between sexes, to simulate sex-specific effect.
     - Dichotomous trait `y_bin`: liability-threshold model on `y_cont`, ~10% prevalence (90th percentile).
-    - Third trait `y_poly`: fully polygenic, very low h² (≈0.02), **uncorrelated** with `y_cont` (used in Session 2 pleiotropy/h² discussion).
-    - Covariates: UKB-like age distribution (decile-interpolated, ~37–87) and sex.
-  - Challenge questions:
-    - (easy) Plot phenotype/covariate distributions. 
-    - (medium) How would you test for dominant or recessive effects? (A: re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS; find the two injected non-additive loci.)
-    - (Hard) Run linkage analysis on simulated fruit-fly data as if you were Sturtevant in 1913. First determine which phenotypes are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly trait columns are deliberately renamed (eye/wing/leg/… ) so the linkage isn't given away by the names. Provided as `data/fly_data.csv`.
-    - (Medium) Model what happens to the GWAS hits in the dichotomous trait if we had ascertained for a disease with onset at age 60. This requires turning all cases younger than 60 into controls. 
-    - (Medium) Do GWAS separately on males and females. Are there any differences? 
-    - (Hard) Predict genetic component of each trait based on the fitted residuals. How correlated is the genetic component? How would you make them more correlated (e.g. subset to significant variants, LD prune, penalized regression)? Plot PGS on x-axis, real trait on y-axis (for dichotomous trait, make stripplot of cases/control-stratified scatter plots).
+    - Third trait `y_poly`: fully polygenic, very low h² (≈0.02), **uncorrelated** with `y_cont` (used in Session 2 null-QQ contrast).
+    - Covariates: UKB-like age distribution (decile-interpolated, ~37–73) and sex.
+  - Main exercises: plot phenotype/covariate distributions; missingness/MAF QC; a provided HWE mid-p test; run linear & logistic GWAS; interpret effect sizes.
+  - Challenge questions (auto-numbered, time-tagged; order = QC → encoding → study design → interpretation → capstone):
+    1. **HWE from scratch** (~10 min): compute HWE with a **chi-squared** test and compare to the provided mid-p values; show a scatter of expected vs. observed heterozygosity with HWE-violating points flagged.
+    2. **Dominant / recessive encodings** (~10 min): re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS to recover the two injected non-additive loci.
+    3. **Sex-stratified GWAS** (~10 min): run GWAS separately in males and females; find the sign-flipped sex-specific locus.
+    4. **Ascertainment by age of onset** (~10 min): turn all `y_bin` cases younger than 60 into controls and watch the hits change.
+    5. **Manual LocusZoom** (~12 min): r²-coloured regional plot on the simulated cohort (where individual genotypes allow LD colouring).
+    6. **Drosophila linkage analysis** (~25 min): as Sturtevant (1913) — determine which traits are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly columns are deliberately renamed so the linkage isn't given away; `data/fly_data.csv`. Provide ground-truth cM, the fiddly helpers (`unravel_index`, `fill_diagonal`), the ends-of-sequence hint, Haldane's map function by default, and a function to plot predictions (a dict) vs ground truth.
+    - *(The PGS / genetic-component challenge was dropped — the low-h², 3-causal data is too sparse for an instructive prediction exercise.)*
     
 
 **Session 2: Interpreting GWAS**
@@ -116,16 +118,20 @@ MORNING (Nik)
   - How will GWAS improve/change in the near-/long-term future?
 
 - Practical (implemented in `session2/`; hybrid real + simulated data)
-  - Use **real genome-wide Pan-UKB summary statistics** (EUR) for three traits, bundled pre-thinned in `data/sumstats_real.npz` (generated by `fetch_sumstats.py`): **LDL** (continuous), **CAD / I25 chronic ischaemic heart disease** (binary), **height** (highly polygenic). Thinning keeps every genome-wide-significant SNP (for Manhattan towers) plus an unbiased ~150k random subset per trait (for QQ / lambda_GC); p-values stored as −log10(p) to avoid underflow.
+  - Use **real genome-wide Pan-UKB summary statistics** (EUR) for three traits, bundled pre-thinned in `data/sumstats_real.npz` (generated by `fetch_sumstats.py`): **LDL** (continuous, field 30780), **CAD / I25 chronic ischaemic heart disease** (binary, ICD10), **BMI** (highly polygenic, field 21001). Thinning keeps every genome-wide-significant SNP (for Manhattan towers) plus an unbiased ~130k random subset per trait (for QQ / lambda_GC); p-values stored as −log10(p) to avoid underflow.
+  - Also bundle **Genebass whole-exome single-variant** results for BMI in `data/genebass_bmi_exomes.csv` (Variant ID in GRCh38, plus `CSQ`, `Beta`, `P-Value`), for the Miami-plot challenge.
   - Make Manhattan plots for all three traits, genome-wide across the 22 autosomes (exclude p>1e-2 for plotting). Real data → polygenic architecture, no single dominant SNP.
-  - Make QQ plots + lambda_GC on the unbiased subset; **x-axis truncated to the max expected −log10(p)**. Discuss inflation from true polygenicity vs stratification. Challenge: 95% CI band; MAF-stratified QQ.
-  - Pleiotropy: signed-beta scatters between trait pairs at shared SNPs (LDL↔CAD tilt vs height ~independent).
+  - Make QQ plots + lambda_GC on the unbiased subset; **x-axis truncated to the max expected −log10(p)**. Discuss inflation from true polygenicity vs stratification. A separate **null-QQ contrast** uses the shuffled simulated phenotype (λ_GC ≈ 1).
+  - Pleiotropy: signed-beta scatter at shared SNPs for **LDL↔CAD** (causally linked → tilted cloud).
   - The setup also re-runs the Session 1 **simulated** GWAS, used for the exercises that need individual-level genotypes (below).
-  - Challenge questions:
-    - Make a trumpet plot (signed beta vs MAF, log-x) from the real LDL data, with ±power curves for N=10k/100k/400k. Do discovered variants sit beyond the band for the real study size?
-    - Code an example of winner's curse (simulated cohort): discovery GWAS on a 2,000 subset → significant hits → **disjoint 8,000 replication** sample; compare effect sizes (regression to the mean in the independent replication).
-    - Link a real LDL lead variant to known associations via the GWAS Catalog REST API (expect lipid genes: APOE, LDLR, PCSK9, SORT1…).
-    - Manual LocusZoom plot (simulated cohort, where individual genotypes allow r² LD colouring).
+  - Challenge questions (auto-numbered, time-tagged):
+    1. **QQ with 95% CI band** (~10 min): Beta(k, n−k+1) confidence band; drawn for a **near-null** trait (shuffled simulated phenotype — stays in the band) *and* real BMI (escapes the band → genuine polygenic signal).
+    2. **MAF-stratified QQ** (~8 min): stratify the real BMI variants into MAF bins and overlay QQ plots.
+    3. **Trumpet plot** (~12 min): signed beta vs MAF (log-x) from real LDL, with ±power curves for N=10k/100k/400k.
+    4. **Winner's curse** (~15 min): resample a **5k discovery** cohort until 3 replicates each have a hit, validate those hits in a **disjoint 5k** sample, scatter discovery vs validation effect sizes (regression to the mean).
+    5. **GWAS × exome Miami plot** (~12 min): single-chromosome Miami (default chr16) of the Pan-UKB common-variant GWAS (up) vs the Genebass exome single-variant results (down) for BMI — noting the **GRCh37 vs GRCh38** build mismatch (no liftover) — then compare effect sizes of significant exome variants by **consequence** (synonymous < missense < pLoF).
+    6. **Bonferroni vs Šidák** (~8 min): solve per-test α from the family-wise rate for C tests, Šidák `1−(1−α)^(1/C)` vs Bonferroni `α/C`, compared across C (Abdi 2007).
+  - *(The Manual LocusZoom plot moved to Session 1, where individual genotypes allow r² colouring. The GWAS-Catalog REST-API challenge was retired in favour of the Genebass exome challenge above.)*
 
 AFTERNOON (Pier)
 
@@ -137,11 +143,14 @@ AFTERNOON (Pier)
   - Genomic control, PCA, mixed models  
 - Computational and statistical aspects  
   - Power vs speed → spike and slab prior, variational inference  
-- Practical  
-- Run PCA from scratch?  
-  - What do superpopulations look like under the lens of PCA? (e.g. African ancestry has much more diversity)  
-    - Challenge: Simulate admixture by combining haplotypes of superpopulations. What does admixture look like in PC space?  
-  - Simple variational inference example?
+- Practical (implemented in `session3/`)
+  - **Data** (`data/pca_data.npz`, via `generate_pca_data.py`): an **"All of Us"-style** diverse cohort (~2,000 participants drawn as admixtures over 5 continental components on a population tree, including African-American and Hispanic/Latino clines) **plus a "1000 Genomes"-style reference panel** (75 unadmixed individuals per superpopulation AFR/AMR/EAS/EUR/SAS, with known labels). ~20k independent SNPs; a few sibling pairs hidden in the cohort; `y_strat` = ancestry-confounded phenotype (no genetics); `y_clean` = a few true causal variants; `true_anc` = each cohort member's real ancestry proportions (answer key).
+  - **Part 1** — *See* stratification: GWAS of `y_strat` with no covariates → inflated QQ / λ_GC ≈ 11 although nothing is causal.
+  - **Part 2** — **PCA from scratch** (SVD of standardised genotypes) on reference + cohort together; colour the reference by superpopulation, cohort in grey → the continuous "All of Us" picture anchored by reference clusters (AFR most dispersed).
+  - **Part 3** — **Assign continental ancestry**: train a **random-forest classifier** on the reference PCs, predict each cohort member's superpopulation with a **confidence threshold** (admixed individuals fall out as "Unassigned"); re-plot the cohort coloured by assigned ancestry.
+  - **Part 4** — Correct stratification: re-run `y_strat` with top PCs as covariates → λ_GC → 1; `y_clean`'s true hits (3/3) survive.
+  - Challenges: (1, ~12 min) confirm the "Unassigned" individuals are the most admixed (via `true_anc`) and sweep the threshold (coverage vs confidence); (2, ~12 min) build the GRM = ZZᵀ/M and find the hidden sibling pairs (≈0.5) → motivates mixed models.
+  - *(A variational-inference / spike-and-slab toy remains a possible extension; not yet implemented.)*
 
 **Session 4: Finemapping**
 
@@ -150,11 +159,12 @@ AFTERNOON (Pier)
 - Define PIP  
 - Mention current methods (e.g. FINEMAP, SuSiE)  
 - Computational aspects?  
-- Practical   
-  - Finemap a locus  
-  - Code an actual lightweight example of statistical finemapping  
-    - Manual example (poor man’s finemapping)  
-      - Identify the variant with lowest p-value in a significant locus. Include that variant as a covariate in the GWAS, then rerun GWAS. Continue in this fashion until there are no remaining significant variants. (Note: this certainly isn’t guaranteed the same end result as a credible set, but perhaps still instructive?)
+- Practical (implemented in `session4/`)
+  - **Data** (`data/finemap_data.npz`, via `generate_finemap_data.py`): two simulated GWAS loci (~400 variants, N=5,000) with realistic LD. Locus A = 1 causal variant inside a tight cluster of near-perfect-LD tags (the marginal lead is usually a tag, not the causal); Locus B = 2 causal variants.
+  - **Part 1** — Regional GWAS + **LocusZoom** coloured by r² with the lead → a whole peak is significant; the lead is often just a tag.
+  - **Part 2** — **"Poor man's" finemapping** (conditional analysis): add the lead as a covariate and re-run, repeating until nothing is significant — **re-drawing the LocusZoom after each round** so the peak is seen to collapse (1 independent signal at Locus A).
+  - **Part 3** — **PIP & 95% credible set** via Wakefield approximate Bayes factor from z = β̂/se → the significant peak collapses to a ~6-variant credible set containing the causal.
+  - Challenges: (1, ~10 min) PIP LocusZoom (height = PIP); (2, ~10 min) credible-set size vs sample size (N/2, N/4); (3, ~12 min) the 2-causal Locus B, where a single-causal credible set fails and conditioning recovers the second signal (the SuSiE idea).
 
 \----------------------
 

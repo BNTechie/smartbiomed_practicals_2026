@@ -1498,16 +1498,17 @@ S2_TITLE = """\
 - Challenge questions: for fast finishers.
 
 **Data**: We now use **real genome-wide Pan-UKB summary statistics** (EUR) for three traits —
-LDL cholesterol (continuous), chronic ischaemic heart disease (binary), and standing height
-(highly polygenic) — for the Manhattan, QQ, trumpet and pleiotropy plots. The setup cell also
-re-runs the Session 1 *simulated* GWAS, which we still use for the analyses that need
+LDL cholesterol (continuous), chronic ischaemic heart disease (binary), and body mass index
+(highly polygenic) — for the Manhattan, QQ, trumpet and pleiotropy plots. We also bundle
+**Genebass whole-exome** single-variant results for BMI (for the Miami-plot challenge). The setup
+cell also re-runs the Session 1 *simulated* GWAS, which we still use for the analyses that need
 individual-level genotypes (null-QQ contrast, winner's curse).
 
 **Setup**: Run the setup cell once at the top (loads real sumstats + re-runs the simulated
 GWAS, ~30s) before any exercises.
 """
 
-# Loader for the bundled real Pan-UKB summary statistics (LDL / CAD / height, EUR).
+# Loader for the bundled real Pan-UKB summary statistics (LDL / CAD / BMI, EUR).
 # Powers the Manhattan, QQ, lambda_GC, MAF-stratified QQ, trumpet and pleiotropy plots.
 # p-values are stored in -log10 units ('nlog10p') to avoid float underflow in the tail.
 LOAD_REAL_SUMSTATS = """\
@@ -1515,7 +1516,7 @@ LOAD_REAL_SUMSTATS = """\
 # Three real traits, parallel to the simulated ones:
 #   ldl    — LDL direct          (continuous biomarker)        ~ like y_cont
 #   cad    — chronic ischaemic heart disease (I25, binary)     ~ like y_bin
-#   height — standing height     (highly polygenic continuous) ~ like y_poly
+#   bmi    — body mass index     (highly polygenic continuous) ~ like y_poly
 # Each trait provides: chrom, pos, maf, beta, se, nlog10p (= -log10 p), and two masks:
 #   sig  = genome-wide significant (p < 5e-8); rand = unbiased random subset for QQ/lambda.
 _real_path = os.path.join(DATA_DIR, 'sumstats_real.npz')
@@ -1524,10 +1525,10 @@ if not os.path.exists(_real_path):
     print('Downloading sumstats_real.npz from GitHub ...')
     import urllib.request; urllib.request.urlretrieve(_url, _real_path)
 _rs = np.load(_real_path, allow_pickle=True)
-REAL_TRAITS = ['ldl', 'cad', 'height']
+REAL_TRAITS = ['ldl', 'cad', 'bmi']
 REAL_LABELS = {'ldl': 'LDL direct (continuous)',
                'cad': 'Chronic ischaemic heart disease (binary)',
-               'height': 'Standing height (polygenic)'}
+               'bmi': 'Body mass index (polygenic)'}
 real = {}
 for _t in REAL_TRAITS:
     real[_t] = {k: _rs[f'{_t}_{k}'] for k in
@@ -1537,6 +1538,26 @@ for _t in REAL_TRAITS:
     d = real[_t]
     print(f"  {_t:6s} ({REAL_LABELS[_t]}): {len(d['pos']):,} SNPs  "
           f"({int(d['sig'].sum()):,} genome-wide sig, {int(d['rand'].sum()):,} in QQ subset)")
+
+# ── Load bundled Genebass BMI exome single-variant results (for the Miami challenge) ──
+# Whole-exome single-variant associations for BMI (Genebass, UK Biobank). Columns include
+# 'Variant ID' (GRCh38, formatted chr-pos-ref-alt), 'CSQ' (variant consequence), 'Beta',
+# 'P-Value'. NOTE: these are GRCh38 coordinates, whereas Pan-UKB above is GRCh37.
+_gb_path = os.path.join(DATA_DIR, 'genebass_bmi_exomes.csv')
+if not os.path.exists(_gb_path):
+    _gburl = f'https://raw.githubusercontent.com/{REPO_SLUG}/{BRANCH_NAME}/data/genebass_bmi_exomes.csv'
+    print('Downloading genebass_bmi_exomes.csv from GitHub ...')
+    import urllib.request; urllib.request.urlretrieve(_gburl, _gb_path)
+genebass = pd.read_csv(_gb_path).dropna(subset=['Variant ID']).copy()
+_vid = genebass['Variant ID'].str.split('-', expand=True)     # chr-pos-ref-alt (GRCh38)
+genebass['chrom']   = _vid[0]
+genebass['pos']     = pd.to_numeric(_vid[1], errors='coerce')  # GRCh38 base-pair position
+genebass['beta']    = pd.to_numeric(genebass['Beta'], errors='coerce')
+genebass['pval']    = pd.to_numeric(genebass['P-Value'], errors='coerce')
+genebass = genebass.dropna(subset=['pos', 'beta', 'pval'])
+genebass['nlog10p'] = -np.log10(genebass['pval'].clip(lower=1e-300))
+print(f"Genebass BMI exome variants: {len(genebass):,}  "
+      f"({genebass['CSQ'].nunique()} consequence types)")
 
 def _thin(n, k=12000, seed=0):
     \"\"\"Index subset of size <=k for plotting only (keeps figures/notebooks small).\"\"\"
@@ -1648,7 +1669,7 @@ side. (For clarity/speed we only plot variants with $p < 10^{-2}$.)
 
 S2_EX11_STUDENT = """\
 # ── Exercise 1.1: Build a genome-wide Manhattan plot ─────────────────────────
-# We now use REAL Pan-UKB summary statistics (LDL, CAD, height) across all
+# We now use REAL Pan-UKB summary statistics (LDL, CAD, BMI) across all
 # chromosomes. Each trait dict `real[t]` has: chrom, pos, maf, beta, se, nlog10p.
 # NOTE: p-values are stored as nlog10p = -log10(p) already (avoids underflow at
 # the extreme tail), so you do NOT need to recompute -log10(p).
@@ -1871,10 +1892,10 @@ print(f"Lambda GC (null): {lambda_null:.3f}  ← should be ≈ 1.0")
 """
 
 S2_PLEIOTROPY = """\
-# ── Pleiotropy: signed-beta scatters across all three traits ──────────────────
+# ── Pleiotropy: signed-beta scatter for LDL vs CAD ────────────────────────────
 # A pleiotropy scatter plots the signed effect size (beta) of one trait vs another,
 # for variants present in BOTH GWAS. Shared genetic effects show up as a tilted cloud.
-# Using the REAL Pan-UKB betas: which trait pairs share signal — and which don't?
+# LDL and CAD are causally linked, so we expect their effect sizes to be correlated.
 
 def merge_betas(ta, tb):
     \"\"\"Align two real traits on chrom:pos; return (beta_a, beta_b, sig_a, sig_b).\"\"\"
@@ -1885,30 +1906,24 @@ def merge_betas(ta, tb):
     return (da['beta'][ia], db['beta'][ib],
             da['sig'][ia],  db['sig'][ib], len(common))
 
-fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-trait_pairs = [('ldl', 'cad'), ('ldl', 'height'), ('cad', 'height')]
+trait_a, trait_b = 'ldl', 'cad'
+beta_a, beta_b, sig_a, sig_b, n_common = merge_betas(trait_a, trait_b)
+sig = sig_a | sig_b
 
-for ax, (ta, tb) in zip(axes, trait_pairs):
-    ba, bb, sa, sb, n_common = merge_betas(ta, tb)
-    sig = sa | sb
-    ns = np.where(~sig)[0]; ns = ns[_thin(len(ns), k=8000)]   # thin grey cloud for display
-    ax.scatter(ba[ns], bb[ns], s=2, alpha=0.1, color='grey', rasterized=True)
-    si = np.where(sig)[0]; si = si[_thin(len(si), k=6000, seed=2)]   # thin significant pts
-    ax.scatter(ba[si],  bb[si],  s=12, alpha=0.6, color='#e15759', zorder=5,
-               label=f'sig in either (n={int(sig.sum()):,})')
-    ax.axhline(0, color='black', lw=0.5); ax.axvline(0, color='black', lw=0.5)
-    ax.set_xlabel(f'beta — {ta}'); ax.set_ylabel(f'beta — {tb}')
-    title = f'{ta} vs {tb}  ({n_common:,} shared SNPs)'
-    if sig.sum() > 2:
-        r = np.corrcoef(ba[sig], bb[sig])[0, 1]
-        title = f'{ta} vs {tb}\\n(r={r:.2f} at sig variants, {n_common:,} shared SNPs)'
-    ax.set_title(title); ax.legend(fontsize=7)
-
-plt.suptitle('Pleiotropy: signed effect sizes across three real traits', y=1.02)
-plt.tight_layout(); plt.show()
+fig, ax = plt.subplots(figsize=(6, 6))
+ns = np.where(~sig)[0]; ns = ns[_thin(len(ns), k=8000)]          # thin grey cloud for display
+ax.scatter(beta_a[ns], beta_b[ns], s=2, alpha=0.1, color='grey', rasterized=True)
+si = np.where(sig)[0]; si = si[_thin(len(si), k=6000, seed=2)]   # thin significant points
+ax.scatter(beta_a[si], beta_b[si], s=12, alpha=0.6, color='#e15759', zorder=5,
+           label=f'sig in either (n={int(sig.sum()):,})')
+ax.axhline(0, color='black', lw=0.5); ax.axvline(0, color='black', lw=0.5)
+ax.set_xlabel(f'beta — {trait_a}'); ax.set_ylabel(f'beta — {trait_b}')
+r = np.corrcoef(beta_a[sig], beta_b[sig])[0, 1] if sig.sum() > 2 else float('nan')
+ax.set_title(f'Pleiotropy: {trait_a} vs {trait_b}\\n'
+             f'(r={r:.2f} at sig variants, {n_common:,} shared SNPs)')
+ax.legend(fontsize=8); plt.tight_layout(); plt.show()
 print("Q: LDL and CAD are causally linked — does the LDL–CAD beta cloud tilt positive?")
-print("Q: Height is largely independent of lipids/heart disease — what does its cloud look like?")
-print("Q: A variant with a large LDL effect but near-zero height effect — what does that imply?")
+print("Q: A variant with a large LDL effect but near-zero CAD effect — what does that imply?")
 """
 
 S2_CQ_MD = """\
@@ -1922,63 +1937,79 @@ S2_CQ1_MD = """\
 
 Under the null, the $k$-th smallest p-value follows a Beta$(k, n-k+1)$ distribution.
 Use `scipy.stats.beta.ppf` to add a 95% confidence band to the QQ plot.
+
+To see what the band is *for*, we draw two QQ plots side by side: a genuinely **near-null** trait
+(the shuffled simulated phenotype from the null-QQ cell — its points should sit inside the band),
+and the **real BMI** GWAS (a hugely polygenic trait — its points should shoot far above the band).
 """
 
 S2_CQ1_STUDENT = """\
-# QQ plot with 95% CI  (real height GWAS, unbiased random subset)
+# QQ plot with a 95% confidence band, drawn for a near-null trait and for real BMI.
 
 def qq_plot_ci(nlog10p, ax=None, color='steelblue', ci_alpha=0.05, label=''):
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 5))
     n   = len(nlog10p)
-    obs = np.sort(nlog10p)              # ascending observed -log10(p)
-    ks  = np.arange(n, 0, -1)           # matching order index for ascending obs
+    observed_sorted = np.sort(nlog10p)     # ascending observed -log10(p)
+    ks  = np.arange(n, 0, -1)              # matching order index for ascending obs
 
     # YOUR CODE HERE
     # Expected quantiles and 95% CI bounds using the Beta distribution.
     # The k-th smallest p-value ~ Beta(k, n-k+1).
-    exp_med  = ???   # stats.beta.ppf(0.5, ks, n-ks+1)
-    ci_lower = ???   # stats.beta.ppf(ci_alpha/2, ks, n-ks+1)
-    ci_upper = ???   # stats.beta.ppf(1 - ci_alpha/2, ks, n-ks+1)
+    expected_median = ???   # stats.beta.ppf(0.5, ks, n-ks+1)
+    ci_lower        = ???   # stats.beta.ppf(ci_alpha/2, ks, n-ks+1)
+    ci_upper        = ???   # stats.beta.ppf(1 - ci_alpha/2, ks, n-ks+1)
 
-    ax.fill_between(-np.log10(exp_med),
+    ax.fill_between(-np.log10(expected_median),
                     -np.log10(ci_upper),    # upper p-bound → lower -log10
                     -np.log10(ci_lower),
                     alpha=0.2, color=color, label='95% CI')
-    ax.scatter(-np.log10(exp_med), obs, s=2, alpha=0.6, color=color, label=label)
-    exp_max = (-np.log10(exp_med)).max()
-    ax.plot([0, exp_max], [0, exp_max], 'r--', linewidth=1.0)
-    ax.set_xlim(0, exp_max)              # truncate x-axis to max expected
+    ax.scatter(-np.log10(expected_median), observed_sorted, s=2, alpha=0.6, color=color, label=label)
+    expected_max = (-np.log10(expected_median)).max()
+    ax.plot([0, expected_max], [0, expected_max], 'r--', linewidth=1.0)
+    ax.set_xlim(0, expected_max)            # truncate x-axis to max expected
     ax.set_xlabel(r'Expected $-\\log_{10}(p)$'); ax.set_ylabel(r'Observed $-\\log_{10}(p)$')
     ax.legend(fontsize=8)
     return ax
 
-fig, ax = plt.subplots(figsize=(6, 6))
-qq_plot_ci(real['height']['nlog10p'][real['height']['rand']], ax=ax, label='height')
-ax.set_title('QQ plot with 95% CI — real height GWAS'); plt.tight_layout(); plt.show()
+# The near-null trait: the shuffled simulated phenotype (pvals_null from the null-QQ cell).
+nlog10p_null = -np.log10(np.clip(pvals_null, 1e-300, 1))
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))
+qq_plot_ci(nlog10p_null, ax=axes[0], color='grey', label='near-null (shuffled)')
+axes[0].set_title('Near-null trait — stays inside the band')
+qq_plot_ci(real['bmi']['nlog10p'][real['bmi']['rand']], ax=axes[1], color='steelblue', label='BMI')
+axes[1].set_title('Real BMI GWAS — escapes the band (polygenic)')
+plt.tight_layout(); plt.show()
+print("Q: The null trait stays in the band but BMI shoots above it — is BMI's lift-off")
+print("   a sign of confounding, or of genuine genome-wide polygenic signal?")
 """
 
 S2_CQ1_SOL = """\
 def qq_plot_ci(nlog10p, ax=None, color='steelblue', ci_alpha=0.05, label=''):
     if ax is None:
         fig, ax = plt.subplots(figsize=(5, 5))
-    n = len(nlog10p); obs = np.sort(nlog10p); ks = np.arange(n, 0, -1)
-    d = np.unique(np.r_[_thin(n, k=4000), np.where(obs >= 2)[0]])   # thin bulk, keep tail
-    obs, ks = obs[d], ks[d]
-    exp_med  = stats.beta.ppf(0.5, ks, n-ks+1)
-    ci_lower = stats.beta.ppf(ci_alpha/2, ks, n-ks+1)
-    ci_upper = stats.beta.ppf(1 - ci_alpha/2, ks, n-ks+1)
-    ax.fill_between(-np.log10(exp_med), -np.log10(ci_upper), -np.log10(ci_lower),
+    n = len(nlog10p); observed_sorted = np.sort(nlog10p); ks = np.arange(n, 0, -1)
+    d = np.unique(np.r_[_thin(n, k=4000), np.where(observed_sorted >= 2)[0]])  # thin bulk, keep tail
+    observed_sorted, ks = observed_sorted[d], ks[d]
+    expected_median = stats.beta.ppf(0.5, ks, n-ks+1)
+    ci_lower        = stats.beta.ppf(ci_alpha/2, ks, n-ks+1)
+    ci_upper        = stats.beta.ppf(1 - ci_alpha/2, ks, n-ks+1)
+    ax.fill_between(-np.log10(expected_median), -np.log10(ci_upper), -np.log10(ci_lower),
                     alpha=0.2, color=color, label='95% CI')
-    ax.scatter(-np.log10(exp_med), obs, s=2, alpha=0.6, color=color, label=label)
-    exp_max = (-np.log10(exp_med)).max()
-    ax.plot([0, exp_max], [0, exp_max], 'r--', linewidth=1.0); ax.set_xlim(0, exp_max)
+    ax.scatter(-np.log10(expected_median), observed_sorted, s=2, alpha=0.6, color=color, label=label)
+    expected_max = (-np.log10(expected_median)).max()
+    ax.plot([0, expected_max], [0, expected_max], 'r--', linewidth=1.0); ax.set_xlim(0, expected_max)
     ax.set_xlabel(r'Expected $-\\log_{10}(p)$'); ax.set_ylabel(r'Observed $-\\log_{10}(p)$')
     ax.legend(fontsize=8); return ax
 
-fig, ax = plt.subplots(figsize=(6, 6))
-qq_plot_ci(real['height']['nlog10p'][real['height']['rand']], ax=ax, label='height')
-ax.set_title('QQ plot with 95% CI — real height GWAS')
+nlog10p_null = -np.log10(np.clip(pvals_null, 1e-300, 1))
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 5.5))
+qq_plot_ci(nlog10p_null, ax=axes[0], color='grey', label='near-null (shuffled)')
+axes[0].set_title('Near-null trait — stays inside the band')
+qq_plot_ci(real['bmi']['nlog10p'][real['bmi']['rand']], ax=axes[1], color='steelblue', label='BMI')
+axes[1].set_title('Real BMI GWAS — escapes the band (polygenic)')
 plt.tight_layout(); plt.show()
 """
 
@@ -1986,14 +2017,14 @@ S2_CQ2_MD = """\
 ### Challenge {N}: MAF-stratified QQ plot — ~8 min
 
 Are rare variants (low MAF) better or worse behaved than common variants?
-Stratify the real height variants into MAF bins and overlay QQ plots (random subset).
+Stratify the real BMI variants into MAF bins and overlay QQ plots (random subset).
 """
 
 S2_CQ2_STUDENT = """\
-# MAF-stratified QQ plot (real height GWAS, random subset)
-sub      = real['height']['rand']
-maf_h    = real['height']['maf'][sub]
-nlp_h    = real['height']['nlog10p'][sub]
+# MAF-stratified QQ plot (real BMI GWAS, random subset)
+sub      = real['bmi']['rand']
+maf_h    = real['bmi']['maf'][sub]
+nlp_h    = real['bmi']['nlog10p'][sub]
 maf_bins = [(0.005, 0.01), (0.01, 0.05), (0.05, 0.15), (0.15, 0.50)]
 colours  = ['#b07aa1', '#e15759', '#f28e2b', '#4e79a7']
 
@@ -2010,16 +2041,16 @@ for (lo, hi), col in zip(maf_bins, colours):
     exp_max = max(exp_max, exp.max())
 
 ax.plot([0, exp_max], [0, exp_max], 'k--', linewidth=1); ax.set_xlim(0, exp_max)
-ax.set_title('MAF-stratified QQ plot — real height GWAS')
+ax.set_title('MAF-stratified QQ plot — real BMI GWAS')
 ax.set_xlabel(r'Expected $-\\log_{10}(p)$'); ax.set_ylabel(r'Observed $-\\log_{10}(p)$')
 ax.legend(); plt.tight_layout(); plt.show()
-print("Q: Common variants carry most of height's association signal — does the plot agree?")
+print("Q: Common variants carry most of BMI's association signal — does the plot agree?")
 """
 
 S2_CQ2_SOL = """\
-sub      = real['height']['rand']
-maf_h    = real['height']['maf'][sub]
-nlp_h    = real['height']['nlog10p'][sub]
+sub      = real['bmi']['rand']
+maf_h    = real['bmi']['maf'][sub]
+nlp_h    = real['bmi']['nlog10p'][sub]
 maf_bins = [(0.005, 0.01), (0.01, 0.05), (0.05, 0.15), (0.15, 0.50)]
 colours  = ['#b07aa1', '#e15759', '#f28e2b', '#4e79a7']
 
@@ -2034,7 +2065,7 @@ for (lo, hi), col in zip(maf_bins, colours):
     ax.scatter(exp[d], obs[d], s=3, alpha=0.5, color=col, label=f'MAF [{lo:.1%}, {hi:.0%})')
     exp_max = max(exp_max, exp.max())
 ax.plot([0, exp_max], [0, exp_max], 'k--', linewidth=1); ax.set_xlim(0, exp_max)
-ax.set_title('MAF-stratified QQ plot — real height GWAS')
+ax.set_title('MAF-stratified QQ plot — real BMI GWAS')
 ax.set_xlabel(r'Expected $-\\log_{10}(p)$'); ax.set_ylabel(r'Observed $-\\log_{10}(p)$')
 ax.legend(); plt.tight_layout(); plt.show()
 """
@@ -2218,114 +2249,200 @@ plt.tight_layout(); plt.show()
 # Validation effects tend to sit closer to zero (below |y=x|) → winner's curse.
 """
 
-S2_CQ6_MD = """\
-### Challenge {N}: Linking a real lead variant to the GWAS Catalog — ~5 min
+S2_MIAMI_MD = """\
+### Challenge {N}: GWAS vs exome — a BMI Miami plot — ~12 min
 
-Our real LDL lead variant sits at a genuine genomic locus. Query the GWAS Catalog REST API
-for known associations near it — because this is real LDL data (not simulated), you should
-recover real, biologically sensible associations (think *APOE*, *LDLR*, *PCSK9*, *SORT1* ...).
+A **Miami plot** stacks two association scans back-to-back on one position axis: here the **Pan-UKB
+common-variant GWAS** for BMI points **up**, and **Genebass whole-exome single-variant** results for
+BMI point **down**. The common-variant GWAS tags broad regulatory regions; the exome scan pinpoints
+**coding** variants in genes.
+
+We zoom into a single chromosome (default **chr16**, home of the *FTO* common-variant peak and *SH2B1*
+coding hits). **Important caveat:** the Pan-UKB GWAS is in **GRCh37** coordinates while Genebass is in
+**GRCh38** — we do **not** lift over, so peaks only line up approximately. After plotting, compare the
+**effect sizes of significant exome variants by consequence** (synonymous / missense / pLoF).
 """
 
-S2_CQ6_STUDENT = """\
-# Query GWAS Catalog API for the REAL LDL lead variant's locus
-import requests
+S2_MIAMI_STUDENT = """\
+# Part A: a BMI Miami plot on one chromosome (Pan-UKB GWAS up, Genebass exome down).
+MIAMI_CHROM = 16
 
-# Lead variant from the real LDL GWAS (largest -log10 p)
-j_lead  = int(np.argmax(real['ldl']['nlog10p']))
-chr_num = int(real['ldl']['chrom'][j_lead])
-pos_bp  = int(real['ldl']['pos'][j_lead])     # Pan-UKB positions are GRCh37 bp
+# Pan-UKB common-variant GWAS on this chromosome (GRCh37 positions).
+gwas_on_chrom = real['bmi']['chrom'] == MIAMI_CHROM
+gwas_pos_mb   = real['bmi']['pos'][gwas_on_chrom] / 1e6
+gwas_nlog10p  = real['bmi']['nlog10p'][gwas_on_chrom]
 
-print(f"Real LDL lead variant: chr{chr_num}:{pos_bp:,}  "
-      f"-log10(p)={real['ldl']['nlog10p'][j_lead]:.1f}")
-print("Querying GWAS Catalog for known associations within ±100 kb ...")
+# Genebass exome single-variant results on this chromosome (GRCh38 positions).
+exome_on_chrom = genebass[genebass['chrom'] == str(MIAMI_CHROM)]
+exome_pos_mb   = exome_on_chrom['pos'].values / 1e6
+exome_nlog10p  = exome_on_chrom['nlog10p'].values
 
-window = 100_000
-url = (f"https://www.ebi.ac.uk/gwas/rest/api/associations/search/findByLocation"
-       f"?chromosomeName={chr_num}"
-       f"&chromosomePosition={pos_bp - window}"
-       f"&chromosomePositionEnd={pos_bp + window}"
-       f"&size=20")
-try:
-    resp = requests.get(url, timeout=20)
-    hits = resp.json().get('_embedded', {}).get('associations', [])
-    for h in hits[:12]:
-        snp   = h.get('loci', [{}])[0].get('strongestRiskAlleles', [{}])[0].get('riskAlleleName','?')
-        trait = h.get('study', {}).get('diseaseTrait', {}).get('trait', '?')
-        pval  = h.get('pvalue', '?')
-        print(f"  {snp:22s}  trait: {trait:45s}  p={pval}")
-    if not hits:
-        print("  No associations returned (try widening the window or check the API).")
-except Exception as e:
-    print(f"  API request failed: {e}")
-    print(f"  Try manually: https://www.ebi.ac.uk/gwas/regions/{chr_num}:{pos_bp-window}-{pos_bp+window}")
-print("\\nQ: Are the nearby associations lipid-related, as you'd expect for an LDL locus?")
+fig, ax = plt.subplots(figsize=(12, 5))
+# Top half: GWAS pointing up.
+ax.scatter(gwas_pos_mb, gwas_nlog10p, s=8, alpha=0.5, color='steelblue',
+           label='Pan-UKB GWAS — common variants (GRCh37)')
+# YOUR CODE HERE: bottom half — plot the Genebass exome variants pointing DOWN
+# (i.e. at y = -exome_nlog10p).
+ax.scatter(exome_pos_mb, ???, s=16, alpha=0.7, color='#e15759',
+           label='Genebass exome — single variants (GRCh38)')
+
+ax.axhline(0, color='black', lw=0.8)
+ax.axhline( -np.log10(5e-8), color='grey', ls='--', lw=0.8)   # genome-wide line (top)
+ax.axhline(  np.log10(5e-8), color='grey', ls='--', lw=0.8)   # genome-wide line (bottom)
+ax.set_yticklabels([f'{abs(t):.0f}' for t in ax.get_yticks()])  # show |−log10 p| on both halves
+ax.set_xlabel(f'Position on chr{MIAMI_CHROM} (Mb)')
+ax.set_ylabel(r'$-\\log_{10}(p)$   (GWAS up / exome down)')
+ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM}: common-variant GWAS vs exome single variants')
+ax.legend(fontsize=8, loc='upper right'); plt.tight_layout(); plt.show()
+print("Q: Do the GWAS peak and the exome coding hits fall at exactly the same position?")
+print("   (Remember: GRCh37 vs GRCh38 — we did not lift over.)")
 """
 
-S2_CQ7_MD = """\
-### Challenge 6: Manual LocusZoom plot
+S2_MIAMI_SOL = """\
+MIAMI_CHROM = 16
+gwas_on_chrom = real['bmi']['chrom'] == MIAMI_CHROM
+gwas_pos_mb   = real['bmi']['pos'][gwas_on_chrom] / 1e6
+gwas_nlog10p  = real['bmi']['nlog10p'][gwas_on_chrom]
+exome_on_chrom = genebass[genebass['chrom'] == str(MIAMI_CHROM)]
+exome_pos_mb   = exome_on_chrom['pos'].values / 1e6
+exome_nlog10p  = exome_on_chrom['nlog10p'].values
 
-A **LocusZoom plot** shows $-\\log_{10}(p)$ vs. position for a region,
-with points **coloured by LD** ($r^2$) with the lead variant.
-This reveals the LD structure underlying a GWAS peak.
-
-Computing $r^2$ needs individual-level genotypes, which the real summary statistics don't
-include — so this uses the **simulated cohort** (where we have `G_qc`).
+fig, ax = plt.subplots(figsize=(12, 5))
+ax.scatter(gwas_pos_mb, gwas_nlog10p, s=8, alpha=0.5, color='steelblue',
+           label='Pan-UKB GWAS — common variants (GRCh37)')
+ax.scatter(exome_pos_mb, -exome_nlog10p, s=16, alpha=0.7, color='#e15759',
+           label='Genebass exome — single variants (GRCh38)')
+ax.axhline(0, color='black', lw=0.8)
+ax.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)
+ax.axhline( np.log10(5e-8), color='grey', ls='--', lw=0.8)
+ax.set_yticklabels([f'{abs(t):.0f}' for t in ax.get_yticks()])
+ax.set_xlabel(f'Position on chr{MIAMI_CHROM} (Mb)')
+ax.set_ylabel(r'$-\\log_{10}(p)$   (GWAS up / exome down)')
+ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM}: common-variant GWAS vs exome single variants')
+ax.legend(fontsize=8, loc='upper right'); plt.tight_layout(); plt.show()
 """
 
-S2_CQ7_STUDENT = """\
-# Challenge 6: Manual LocusZoom plot for the lead locus
+S2_CSQ_STUDENT = """\
+# Part B: among significant exome variants, do effect sizes differ by consequence?
+EXOME_SIG = 1e-6                                  # exome-wide significance threshold
+significant_exome = genebass[genebass['pval'] < EXOME_SIG].copy()
 
-# Define the region to zoom into (±1 Mb around the lead variant)
-j_lead    = np.argmin(pvals_cont)
-pos_lead  = pos_qc[j_lead]
-region_mask = np.abs(pos_qc - pos_lead) < 1000  # ±1000 kbp = ±1 Mb
+# Group each variant's consequence (CSQ) into synonymous / missense / pLoF.
+PLOF = {'stop_gained', 'frameshift_variant', 'splice_donor_variant',
+        'splice_acceptor_variant', 'start_lost'}
+def consequence_group(csq):
+    if csq in PLOF:                 return 'pLoF'          # protein loss-of-function
+    if csq == 'missense_variant':   return 'missense'
+    if csq == 'synonymous_variant': return 'synonymous'
+    return 'other'
+significant_exome['group'] = significant_exome['CSQ'].map(consequence_group)
 
-print(f"Region: chr1:{pos_lead-1000:,}–{pos_lead+1000:,} kbp")
-print(f"Variants in region: {region_mask.sum():,}")
+groups = ['synonymous', 'missense', 'pLoF']
+# YOUR CODE HERE: for each group, the array of ABSOLUTE effect sizes |beta|.
+abs_beta_by_group = [ ??? for g in groups ]
 
-# YOUR CODE HERE
-# Step 1: compute r² between each variant in the region and the lead variant
-# Hint: Pearson correlation r = corrcoef(G_lead, G_j); r² = r**2
-g_lead = G_qc[:, j_lead]
-r2 = ???    # shape (n_region,)
-
-# Step 2: create the LocusZoom scatter plot
-# x = position (Mb), y = -log10(p), colour = r²
-cmap = plt.cm.RdYlBu_r  # red = high LD, blue = low LD
-norm = mcolors.Normalize(vmin=0, vmax=1)
-
-fig, ax = plt.subplots(figsize=(12, 4))
-sc = ax.scatter(pos_qc[region_mask] / 1000,
-                -np.log10(pvals_cont[region_mask] + 1e-300),
-                c=r2, cmap=cmap, norm=norm, s=20, zorder=3)
-# Highlight lead variant
-ax.scatter([pos_lead/1000], [-np.log10(pvals_cont[j_lead]+1e-300)],
-           s=100, marker='D', color='black', zorder=5, label='Lead SNP')
-plt.colorbar(sc, ax=ax, label=r'$r^2$ with lead SNP')
-ax.axhline(-np.log10(5e-8), color='red', linestyle='--', linewidth=1, label='5×10⁻⁸')
-ax.set_xlabel('Position on chr1 (Mb)'); ax.set_ylabel(r'$-\\log_{10}(p)$')
-ax.set_title(f'LocusZoom: lead locus on chr1 (±1 Mb) — continuous trait')
-ax.legend(fontsize=8); plt.tight_layout(); plt.show()
-"""
-
-S2_CQ7_SOL = """\
-j_lead = np.argmin(pvals_cont); pos_lead = pos_qc[j_lead]
-region_mask = np.abs(pos_qc - pos_lead) < 1000
-g_lead = G_qc[:, j_lead]
-G_region = G_qc[:, region_mask]
-r2 = np.array([np.corrcoef(g_lead, G_region[:, k])[0,1]**2 for k in range(G_region.shape[1])])
-
-cmap = plt.cm.RdYlBu_r; norm = mcolors.Normalize(vmin=0, vmax=1)
-fig, ax = plt.subplots(figsize=(12, 4))
-sc = ax.scatter(pos_qc[region_mask]/1000, -np.log10(pvals_cont[region_mask]+1e-300),
-                c=r2, cmap=cmap, norm=norm, s=20, zorder=3)
-ax.scatter([pos_lead/1000], [-np.log10(pvals_cont[j_lead]+1e-300)],
-           s=100, marker='D', color='black', zorder=5, label='Lead SNP')
-plt.colorbar(sc, ax=ax, label=r'$r^2$ with lead SNP')
-ax.axhline(-np.log10(5e-8), color='red', linestyle='--', linewidth=1)
-ax.set_xlabel('Position on chr1 (Mb)'); ax.set_ylabel(r'$-\\log_{10}(p)$')
-ax.set_title('LocusZoom: lead locus — continuous trait'); ax.legend(fontsize=8)
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.boxplot(abs_beta_by_group, showfliers=False)
+ax.set_xticks(range(1, len(groups) + 1))
+ax.set_xticklabels([f'{g}\\n(n={len(a)})' for g, a in zip(groups, abs_beta_by_group)])
+for i, a in enumerate(abs_beta_by_group, start=1):              # jittered points
+    ax.scatter(np.random.default_rng(i).normal(i, 0.05, len(a)), a, s=10, alpha=0.4, color='grey')
+ax.set_ylabel('|effect size|  (|Beta|, IRNT units)')
+ax.set_title(f'BMI exome variants (p < {EXOME_SIG:g}): effect size by consequence')
 plt.tight_layout(); plt.show()
+for g, a in zip(groups, abs_beta_by_group):
+    print(f"  {g:11s}: n={len(a):4d}, median |beta| = {np.median(a):.4f}")
+print("Q: Which consequence class carries the largest per-allele effects, and why?")
+"""
+
+S2_CSQ_SOL = """\
+EXOME_SIG = 1e-6
+significant_exome = genebass[genebass['pval'] < EXOME_SIG].copy()
+PLOF = {'stop_gained', 'frameshift_variant', 'splice_donor_variant',
+        'splice_acceptor_variant', 'start_lost'}
+def consequence_group(csq):
+    if csq in PLOF:                 return 'pLoF'
+    if csq == 'missense_variant':   return 'missense'
+    if csq == 'synonymous_variant': return 'synonymous'
+    return 'other'
+significant_exome['group'] = significant_exome['CSQ'].map(consequence_group)
+
+groups = ['synonymous', 'missense', 'pLoF']
+abs_beta_by_group = [ significant_exome.loc[significant_exome['group'] == g, 'beta'].abs().values
+                      for g in groups ]
+
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.boxplot(abs_beta_by_group, showfliers=False)
+ax.set_xticks(range(1, len(groups) + 1))
+ax.set_xticklabels([f'{g}\\n(n={len(a)})' for g, a in zip(groups, abs_beta_by_group)])
+for i, a in enumerate(abs_beta_by_group, start=1):
+    ax.scatter(np.random.default_rng(i).normal(i, 0.05, len(a)), a, s=10, alpha=0.4, color='grey')
+ax.set_ylabel('|effect size|  (|Beta|, IRNT units)')
+ax.set_title(f'BMI exome variants (p < {EXOME_SIG:g}): effect size by consequence')
+plt.tight_layout(); plt.show()
+for g, a in zip(groups, abs_beta_by_group):
+    print(f"  {g:11s}: n={len(a):4d}, median |beta| = {np.median(a):.4f}")
+# pLoF > missense > synonymous: disrupting the protein has larger phenotypic consequences than
+# a synonymous change, which is (mostly) silent.
+"""
+
+S2_SIDAK_MD = """\
+### Challenge {N}: Bonferroni vs Šidák — ~8 min
+
+The genome-wide threshold $5\\times10^{-8}$ is essentially a **Bonferroni** correction: for a
+family-wise error rate $\\alpha_{FW}$ over $C$ tests, use per-test $\\alpha_{PT}=\\alpha_{FW}/C$
+(with $\\alpha_{FW}=0.05$, $C\\approx10^6$ independent common variants).
+
+**Šidák** is exact *under independence*: requiring $P(\\text{no false positive})=(1-\\alpha_{PT})^{C}
+=1-\\alpha_{FW}$ gives $\\alpha_{PT}=1-(1-\\alpha_{FW})^{1/C}$. Solve it and compare to Bonferroni
+across a range of $C$ (see Abdi, 2007).
+"""
+
+S2_SIDAK_STUDENT = """\
+# Bonferroni vs Šidák per-test significance threshold, as a function of the number of tests C.
+alpha_familywise = 0.05
+C = np.logspace(0, 7, 200)                      # number of tests, from 1 to 10^7
+
+bonferroni_threshold = alpha_familywise / C
+# YOUR CODE HERE: the Šidák per-test threshold, alpha_PT = 1 - (1 - alpha_FW)^(1/C).
+sidak_threshold = ???
+
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.loglog(C, bonferroni_threshold, color='#4e79a7', label=r'Bonferroni: $\\alpha_{FW}/C$')
+ax.loglog(C, sidak_threshold, '--', color='#e15759',
+          label=r'Šidák: $1-(1-\\alpha_{FW})^{1/C}$')
+ax.axvline(1e6, color='grey', ls=':', label=r'$\\approx$1M independent tests')
+ax.axhline(5e-8, color='black', ls=':', label=r'$5\\times10^{-8}$')
+ax.set_xlabel('number of tests, C'); ax.set_ylabel('per-test significance threshold')
+ax.set_title('Bonferroni vs Šidák'); ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+
+at_1e6 = np.argmin(np.abs(C - 1e6))
+print(f"At C=1e6:  Bonferroni={bonferroni_threshold[at_1e6]:.3e}, "
+      f"Šidák={sidak_threshold[at_1e6]:.3e}, ratio={sidak_threshold[at_1e6]/bonferroni_threshold[at_1e6]:.4f}")
+print("Q: Which is more conservative, and why do the two converge for large C?")
+"""
+
+S2_SIDAK_SOL = """\
+alpha_familywise = 0.05
+C = np.logspace(0, 7, 200)
+
+bonferroni_threshold = alpha_familywise / C
+sidak_threshold = 1 - (1 - alpha_familywise)**(1.0 / C)
+
+fig, ax = plt.subplots(figsize=(7, 5))
+ax.loglog(C, bonferroni_threshold, color='#4e79a7', label=r'Bonferroni: $\\alpha_{FW}/C$')
+ax.loglog(C, sidak_threshold, '--', color='#e15759',
+          label=r'Šidák: $1-(1-\\alpha_{FW})^{1/C}$')
+ax.axvline(1e6, color='grey', ls=':', label=r'$\\approx$1M independent tests')
+ax.axhline(5e-8, color='black', ls=':', label=r'$5\\times10^{-8}$')
+ax.set_xlabel('number of tests, C'); ax.set_ylabel('per-test significance threshold')
+ax.set_title('Bonferroni vs Šidák'); ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+
+at_1e6 = np.argmin(np.abs(C - 1e6))
+print(f"At C=1e6:  Bonferroni={bonferroni_threshold[at_1e6]:.3e}, "
+      f"Šidák={sidak_threshold[at_1e6]:.3e}, ratio={sidak_threshold[at_1e6]/bonferroni_threshold[at_1e6]:.4f}")
+# Bonferroni is marginally more conservative (smaller threshold); for small alpha_FW/C the two are
+# almost identical, since 1-(1-a)^(1/C) ≈ a/C.
 """
 
 
@@ -2372,13 +2489,12 @@ def build_session1(answers=False, run=False, nb_path=None):
         *ex(S1_EX31_STUDENT, S1_EX31_SOL),
         md(S1_CQ_MD),
         # Challenge order: QC → encoding → stratification → study design → interpretation
-        #                  → prediction → capstone
+        #                  → capstone
         chmd(S1_CQHWE_MD), *ex(S1_CQHWE_STUDENT, S1_CQHWE_SOL),
         chmd(S1_CQ1_MD),   *ex(S1_CQ1_STUDENT, S1_CQ1_SOL),
         chmd(S1_CQSEX_MD), *ex(S1_CQSEX_STUDENT, S1_CQSEX_SOL),
         chmd(S1_CQ4_MD),   *ex(S1_CQ4_STUDENT, S1_CQ4_SOL),
         chmd(S1_LZ_MD),    *ex(S1_LZ_STUDENT, S1_LZ_SOL),
-        chmd(S1_CQ5_MD),   *ex(S1_CQ5_STUDENT, S1_CQ5_SOL),
         chmd(S1_CQ2_MD),
         code(S1_CQ2_STUDENT) if not run else md(""),
         *ex(S1_CQ2B_STUDENT, S1_CQ2B_SOL),
@@ -2418,7 +2534,8 @@ def build_session2(answers=False, run=False, nb_path=None):
         chmd(S2_CQ2_MD), *ex(S2_CQ2_STUDENT, S2_CQ2_SOL),
         chmd(S2_CQ3_MD), *ex(S2_CQ3_STUDENT, S2_CQ3_SOL),
         chmd(S2_CQ4_MD), *ex(S2_CQ4_STUDENT, S2_CQ4_SOL),
-        chmd(S2_CQ6_MD), code(S2_CQ6_STUDENT) if not run else md(""),
+        chmd(S2_MIAMI_MD), *ex(S2_MIAMI_STUDENT, S2_MIAMI_SOL), *ex(S2_CSQ_STUDENT, S2_CSQ_SOL),
+        chmd(S2_SIDAK_MD), *ex(S2_SIDAK_STUDENT, S2_SIDAK_SOL),
     ]
     return notebook(cells)
 
