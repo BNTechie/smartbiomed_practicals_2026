@@ -9,21 +9,25 @@ and runtime data download. Data is simulated by `generate_pca_data.py` and `gene
 
 ## Session 3 — Complexities of GWAS: population structure & relatedness
 
-**Data** (`data/pca_data.npz`): 3 discrete populations (Balding–Nichols, increasing Fst) + admixed
-individuals + a few sibling pairs; ~1,000 individuals × 20,000 independent SNPs.
-`y_strat` = ancestry-confounded phenotype (no genetics); `y_clean` = a few true causal variants.
+**Data** (`data/pca_data.npz`): an **"All of Us"-style** diverse cohort (~2,000 participants drawn as
+admixtures over 5 continental components on a population tree, incl. African-American and
+Hispanic/Latino clines) **plus a "1000 Genomes"-style reference panel** (75 unadmixed individuals per
+superpopulation AFR/AMR/EAS/EUR/SAS, with known labels). ~20,000 independent SNPs; a few sibling
+pairs hidden in the cohort. `y_strat` = ancestry-confounded phenotype (no genetics); `y_clean` = a
+few true causal variants. `true_anc` holds each cohort member's real ancestry proportions (answer key).
 
 | # | Question | What it teaches | The "aha" |
 |---|----------|-----------------|-----------|
-| Part 1 | GWAS of `y_strat` (no covariates) → QQ + λ_GC | Confounding by ancestry | Thousands of "hits" with **zero** causal variants → λ_GC ≈ 15 |
-| Part 2 | **PCA from scratch** (SVD of standardised genotypes); scatter PC1×PC2 by population | PCs are the ancestry axes | Populations form clusters; the high-Fst population is more dispersed |
-| Part 3 | Re-run GWAS of `y_strat` **with top PCs as covariates**; re-run `y_clean` too | PCA corrects stratification | λ_GC → 1, false hits vanish, **true** hits (3/3) survive |
-| Challenge 1 (~10 min) | Admixed individuals in PC space, coloured by ancestry fraction | Admixture = linear mixture of ancestries | Admixed samples fall on a **cline** between parental clusters |
-| Challenge 2 (~10 min) | Genomic control (divide χ² by λ_GC) vs PCA | GC is a blunt global rescale | GC can't separate true polygenic signal from structure; PCA models it |
-| Challenge 3 (~12 min) | Build the GRM = ZZᵀ/M; find the hidden sibling pairs | Relatedness violates independence | Sib pairs show GRM ≈ 0.5 → motivates mixed models |
+| Part 1 | GWAS of `y_strat` (no covariates) → QQ + λ_GC | Confounding by ancestry | Thousands of "hits" with **zero** causal variants → λ_GC ≈ 11 |
+| Part 2 | **PCA from scratch** (SVD) on reference + cohort together; colour reference by superpop, cohort grey | PCs are the ancestry axes; a labelled panel names the clusters | Cohort forms a continuous spread anchored by the reference clusters — the All of Us picture |
+| Part 3 | Train a **random forest** on the reference PCs; predict each cohort member's superpop; apply a **confidence threshold**; re-plot coloured by assigned ancestry | How biobanks actually assign continental ancestry | Clearly-defined groups get labelled; **admixed individuals fall below threshold → "Unassigned"** |
+| Part 4 | Re-run GWAS of `y_strat` **with top PCs as covariates**; re-run `y_clean` too | PCA corrects stratification | λ_GC → 1, false hits vanish, **true** hits (3/3) survive |
+| Challenge 1 (~12 min) | Confirm "Unassigned" = the admixed (via `true_anc`); sweep the threshold (coverage vs confidence) | The cost of a hard ancestry cutoff | Unassigned people have the lowest *dominant* ancestry fraction; a stricter threshold drops the admixed first |
+| Challenge 2 (~12 min) | Build the GRM = ZZᵀ/M; find the hidden sibling pairs | Relatedness violates independence | Sib pairs show GRM ≈ 0.5 → motivates mixed models |
 
 Helpers reused: `run_gwas` (from the morning). New: `qq_plot`, `lambda_gc` (in the setup cell).
-Only standard linear algebra (`np.linalg.svd`), matrix products, regression.
+Standard linear algebra (`np.linalg.svd`), matrix products, regression; the only ready-made tool is
+`sklearn.ensemble.RandomForestClassifier` for the ancestry-assignment step.
 
 ---
 
@@ -35,7 +39,7 @@ Locus A = 1 causal variant inside a tight cluster of near-perfect-LD tags; Locus
 | # | Question | What it teaches | The "aha" |
 |---|----------|-----------------|-----------|
 | Part 1 | Regional GWAS + LocusZoom (colour by r² with lead) | LD makes a whole peak significant | ~8 significant variants; the marginal lead is often a **tag**, not the causal |
-| Part 2 | **Conditional analysis** — add the lead as a covariate, re-run, repeat | Counting independent signals | Conditioning on the lead makes the rest of the peak vanish (1 signal at Locus A) |
+| Part 2 | **Conditional analysis** — add the lead as a covariate, re-run, repeat, **re-drawing the LocusZoom each round** | Counting independent signals | Watch the peak collapse: conditioning on the lead makes the rest of the peak vanish (1 signal at Locus A) |
 | Part 3 | **PIP & 95% credible set** via Wakefield ABF from z = β̂/se | Posterior prob. of being causal | The significant peak collapses to a ~6-variant credible set containing the causal |
 | Challenge 1 (~10 min) | PIP LocusZoom (height = PIP) | Visualising the credible set | A handful of high-PIP variants carry essentially all the posterior |
 | Challenge 2 (~10 min) | Recompute the credible set at N/2, N/4 | Resolution scales with power (and LD) | The set grows as power falls; LD ultimately caps resolution |

@@ -26,9 +26,12 @@ resampling), and linking a real lead variant to the GWAS Catalog.
 Individual-level analyses (winner's curse, null-QQ contrast) reuse the simulated Session 1 cohort.
 
 **Session 3 — Complexities of GWAS: population structure & relatedness** (`session3/`)
-See stratification inflate a GWAS, compute **PCA from scratch** (SVD of standardised genotypes) to
-reveal ancestry, and correct the confounding with PC covariates. Challenges: admixture as a cline in
-PC space, genomic control vs PCA, and the genetic relatedness matrix (GRM) finding hidden siblings.
+See stratification inflate a GWAS, compute **PCA from scratch** (SVD of standardised genotypes) on an
+**"All of Us"-style diverse cohort anchored by a "1000 Genomes"-style reference panel**, assign
+continental ancestry with a **random-forest classifier + confidence threshold** (admixed individuals
+fall out as "Unassigned"), and correct the confounding with PC covariates. Challenges: who the
+classifier leaves unassigned (and the threshold trade-off), and the genetic relatedness matrix (GRM)
+finding hidden siblings.
 
 **Session 4 — Fine-mapping** (`session4/`)
 Go from a peak of LD-correlated significant variants to a short list of causal candidates:
@@ -58,13 +61,13 @@ automatically (no manual download needed).
 ## Running locally
 
 ```bash
-pip install numpy scipy pandas matplotlib jupyter
+pip install numpy scipy pandas matplotlib scikit-learn jupyter
 jupyter notebook session1/practical.ipynb
 ```
 
 Data lives in `data/` (tracked with **Git LFS**): `gwas_data.npz` (Session 1/2 genotypes +
 phenotypes), `fly_data.csv` (Drosophila cross), `sumstats_real.npz` (thinned Pan-UKB sumstats),
-`pca_data.npz` (Session 3 structured populations), `finemap_data.npz` (Session 4 loci).
+`pca_data.npz` (Session 3 cohort + reference panel), `finemap_data.npz` (Session 4 loci).
 With Git LFS installed, `git clone` fetches them; otherwise the notebooks download them on first run.
 
 ## Regenerating the materials (instructors)

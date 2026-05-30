@@ -2428,14 +2428,18 @@ def build_session2(answers=False, run=False, nb_path=None):
 S3_TITLE = """\
 # Session 3: Complexities of GWAS — Population Structure & Relatedness
 
-**Timing**: ~60 minutes (Parts 1–3 ~35 min; challenges for fast finishers).
+**Timing**: ~60 minutes (Parts 1–4 ~45 min; challenges for fast finishers).
 
-**Dataset**: simulated genotypes for 3 discrete populations (Balding–Nichols model) plus admixed
-individuals and a few sibling pairs — ~1,000 individuals × 20,000 independent SNPs.
-- `y_strat`: a phenotype confounded **purely by ancestry** (environmental — no causal variant).
-- `y_clean`: a phenotype with a few **true causal variants** and no confounding.
+**Dataset**: a simulated **"All of Us"-style** diverse cohort (~2,000 participants) plus a small
+**"1000 Genomes"-style reference panel** (~75 individuals per continental group, with known labels),
+each genotyped at 20,000 independent SNPs.
+- `G`        : the diverse cohort we analyse.
+- `G_ref`    : the labelled reference panel (superpopulations AFR, AMR, EAS, EUR, SAS).
+- `y_strat`  : a cohort phenotype confounded **purely by ancestry** (environmental — no causal variant).
+- `y_clean`  : a cohort phenotype with a few **true causal variants** and no confounding.
 
-Everything (PCA, GWAS) is built from scratch with NumPy — no specialised packages.
+Everything (PCA, GWAS) is built from scratch with NumPy; the only "black box" we hand you is a
+ready-made random-forest classifier for the ancestry-assignment step.
 """
 
 S3_SETUP = """\
@@ -2449,18 +2453,29 @@ import warnings; warnings.filterwarnings('ignore')
 plt.rcParams.update({'figure.dpi': 80, 'font.size': 11})
 
 """ + data_bootstrap(['pca_data.npz']) + """
-d = np.load(os.path.join(DATA_DIR, 'pca_data.npz'), allow_pickle=True)
-G          = d['G'].astype(np.float32)      # (N, M) genotypes 0/1/2 (no missingness here)
-pop        = d['pop']                       # 0,1,2 = discrete pops; 3 = admixed
-admix_frac = d['admix_frac']                # (N, 3) ancestry proportions
-y_strat    = d['y_strat']                   # ancestry-confounded phenotype (no genetics)
-y_clean    = d['y_clean']                   # phenotype with true causal variants
-causal_idx = d['causal_idx']                # true causal SNP indices for y_clean
-rel_pairs  = d['rel_pairs']                 # injected sibling pairs (row indices)
-age        = d['age']; sex = d['sex']
-pop_names  = d['pop_names']
-N, M = G.shape
-print(f"Loaded {N:,} individuals × {M:,} SNPs  (pops: {np.bincount(pop)})")
+data = np.load(os.path.join(DATA_DIR, 'pca_data.npz'), allow_pickle=True)
+
+# ── The diverse cohort we analyse ("All of Us"-style) ────────────────────────
+G              = data['G'].astype(np.float32)   # (N_cohort, M)  genotypes 0/1/2
+y_strat        = data['y_strat']                # ancestry-confounded phenotype (no genetics)
+y_clean        = data['y_clean']                # phenotype with true causal variants
+causal_idx     = data['causal_idx']             # true causal SNP indices for y_clean
+rel_pairs      = data['rel_pairs']              # injected sibling pairs (row indices into G)
+true_anc       = data['true_anc']               # (N_cohort, 5) TRUE ancestry proportions (answer key)
+age            = data['age']
+sex            = data['sex']
+
+# ── The labelled reference panel ("1000 Genomes"-style) ──────────────────────
+G_ref          = data['G_ref'].astype(np.float32)   # (N_ref, M) genotypes 0/1/2
+ref_pop        = data['ref_pop']                    # superpopulation index for each reference person
+superpop_names = data['superpop_names']             # ['AFR', 'AMR', 'EAS', 'EUR', 'SAS']
+
+n_cohort = G.shape[0]
+n_ref    = G_ref.shape[0]
+n_snps   = G.shape[1]
+print(f"Cohort:    {n_cohort:,} individuals x {n_snps:,} SNPs")
+print(f"Reference: {n_ref:,} individuals, "
+      f"{len(superpop_names)} superpopulations ({list(superpop_names)})")
 
 """ + RUN_GWAS_FN + """
 def qq_plot(pvals, ax=None, color='steelblue', label=''):
@@ -2477,6 +2492,7 @@ def qq_plot(pvals, ax=None, color='steelblue', label=''):
     return ax
 
 def lambda_gc(pvals):
+    \"\"\"Genomic-control inflation factor: 1.0 means no inflation.\"\"\"
     chi2 = stats.chi2.isf(np.clip(pvals, 1e-300, 1), df=1)
     return np.median(chi2) / stats.chi2.ppf(0.5, df=1)
 
@@ -2495,25 +2511,39 @@ GWAS and see what the QQ plot / $\\lambda_{GC}$ look like.
 """
 
 S3_EX1_STUDENT = """\
-# Exercise 1.1: GWAS of the ancestry-confounded phenotype (no covariates)
-# YOUR CODE HERE — run_gwas on y_strat with NO covariates
-betas, ses, pvals_strat = run_gwas(???, ???)
+# Exercise 1.1: GWAS of the ancestry-confounded phenotype, with NO ancestry correction.
+#
+# run_gwas(phenotype, genotypes, covars=...) regresses the phenotype on each SNP.
+# Here we deliberately pass NO covariates, so nothing accounts for ancestry.
 
+# YOUR CODE HERE: run the GWAS of y_strat on the cohort genotypes G (no covariates)
+betas, std_errors, pvalues_strat = run_gwas(???, ???)
+
+# Plot the QQ plot and report the genomic-control inflation factor (lambda_GC).
 fig, ax = plt.subplots(figsize=(5, 5))
-qq_plot(pvals_strat, ax=ax, label='y_strat, no covariates')
-ax.set_title('QQ plot — ancestry-confounded phenotype'); plt.tight_layout(); plt.show()
-print(f"lambda_GC = {lambda_gc(pvals_strat):.2f}   (1.0 = no inflation)")
-print(f"'Hits' at p<5e-8: {(pvals_strat < 5e-8).sum():,}  — but NOTHING is truly causal!")
+qq_plot(pvalues_strat, ax=ax, label='y_strat, no covariates')
+ax.set_title('QQ plot — ancestry-confounded phenotype')
+plt.tight_layout(); plt.show()
+
+n_hits = (pvalues_strat < 5e-8).sum()
+print(f"lambda_GC = {lambda_gc(pvalues_strat):.2f}   (1.0 would mean no inflation)")
+print(f"'Hits' at p < 5e-8: {n_hits:,}  — but NOTHING is truly causal!")
 print("Q: Why are there so many associations when no variant affects the trait?")
 """
 
 S3_EX1_SOL = """\
-betas, ses, pvals_strat = run_gwas(y_strat, G)
+# Run the GWAS with no covariates: every ancestry-informative SNP picks up the ancestry-driven
+# difference in phenotype means.
+betas, std_errors, pvalues_strat = run_gwas(y_strat, G)
+
 fig, ax = plt.subplots(figsize=(5, 5))
-qq_plot(pvals_strat, ax=ax, label='y_strat, no covariates')
-ax.set_title('QQ plot — ancestry-confounded phenotype'); plt.tight_layout(); plt.show()
-print(f"lambda_GC = {lambda_gc(pvals_strat):.2f}")
-print(f"'Hits' at p<5e-8: {(pvals_strat < 5e-8).sum():,}  — all spurious (ancestry confounding).")
+qq_plot(pvalues_strat, ax=ax, label='y_strat, no covariates')
+ax.set_title('QQ plot — ancestry-confounded phenotype')
+plt.tight_layout(); plt.show()
+
+n_hits = (pvalues_strat < 5e-8).sum()
+print(f"lambda_GC = {lambda_gc(pvalues_strat):.2f}")
+print(f"'Hits' at p < 5e-8: {n_hits:,}  — all spurious (ancestry confounding).")
 """
 
 S3_PART2_MD = """\
@@ -2523,84 +2553,245 @@ PCA finds the axes of greatest genetic variation across individuals — which, f
 samples, are the **ancestry axes**. We compute it directly from the standardised genotype matrix
 with a singular value decomposition (SVD); no specialised package needed.
 
-If $Z$ is the (N × M) standardised genotype matrix, then $Z = U S V^\\top$ and the **principal
-component scores** are the columns of $U S$. The top few capture ancestry.
+If $Z$ is the (individuals × SNPs) standardised genotype matrix, then $Z = U S V^\\top$ and the
+**principal-component scores** are the columns of $U S$. The top few capture ancestry.
+
+We stack the **reference panel on top of the cohort** and run PCA on everyone together, so that
+both live in the *same* PC space. We then colour the reference individuals by their known
+superpopulation and draw the cohort in grey — exactly the kind of plot you see for All of Us.
 """
 
 S3_EX2_STUDENT = """\
-# Exercise 2.1: PCA from scratch
-# Standardise genotypes (mean 0, sd 1 per SNP)
-Z = (G - G.mean(0)) / (G.std(0) + 1e-8)
+# Exercise 2.1: PCA of the reference panel + cohort, in one shared coordinate system.
 
-# YOUR CODE HERE
-# Economy SVD of Z / sqrt(N); principal-component scores are U * S
+# Step 1. Stack reference panel (first) on top of the cohort (after).
+genotypes_all = np.vstack([G_ref, G])               # shape (n_ref + n_cohort, n_snps)
+
+# Step 2. Standardise each SNP to mean 0, sd 1.
+genotype_mean = genotypes_all.mean(axis=0)
+genotype_sd   = genotypes_all.std(axis=0) + 1e-8
+Z = (genotypes_all - genotype_mean) / genotype_sd
+
+# Step 3. Economy SVD of Z / sqrt(n_total); the PC scores are the columns of U * S.
+n_total = genotypes_all.shape[0]
+# YOUR CODE HERE: fill in the matrix to decompose, and the PC-score formula.
 U, S, Vt = np.linalg.svd(???, full_matrices=False)
-PC = ???                    # (N, k) scores = U * S
+PC = ???                                            # (n_total, k) PC scores = U * S
 
-# Plot PC1 vs PC2, coloured by population
-fig, ax = plt.subplots(figsize=(6, 5))
-for k, name in enumerate(pop_names):
-    m = pop == k
-    ax.scatter(PC[m, 0], PC[m, 1], s=10, alpha=0.6, label=str(name))
-ax.set_xlabel('PC1'); ax.set_ylabel('PC2'); ax.set_title('Genotype PCA'); ax.legend()
-plt.tight_layout(); plt.show()
-print("Q: Which group is most spread out, and what does that say about its diversity?")
+# Step 4. Split the PC scores back into reference rows (first) and cohort rows (after).
+PC_ref    = PC[:n_ref]
+PC_cohort = PC[n_ref:]
+
+# Step 5. Plot PC1 vs PC2: cohort in grey, reference coloured by superpopulation.
+fig, ax = plt.subplots(figsize=(7, 5.5))
+ax.scatter(PC_cohort[:, 0], PC_cohort[:, 1], s=8, alpha=0.4, color='lightgrey', label='cohort')
+for group_index, group_name in enumerate(superpop_names):
+    is_this_group = ref_pop == group_index
+    ax.scatter(PC_ref[is_this_group, 0], PC_ref[is_this_group, 1],
+               s=45, edgecolor='black', lw=0.3, label=f'ref: {group_name}')
+ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+ax.set_title('Genotype PCA — cohort anchored by a labelled reference panel')
+ax.legend(fontsize=8, markerscale=1.2); plt.tight_layout(); plt.show()
+print("Q: Which reference cluster does the bulk of the cohort sit near?")
+print("Q: Some cohort individuals fall BETWEEN reference clusters — who might they be?")
 """
 
 S3_EX2_SOL = """\
-Z = (G - G.mean(0)) / (G.std(0) + 1e-8)
-U, S, Vt = np.linalg.svd(Z / np.sqrt(N), full_matrices=False)
+genotypes_all = np.vstack([G_ref, G])
+genotype_mean = genotypes_all.mean(axis=0)
+genotype_sd   = genotypes_all.std(axis=0) + 1e-8
+Z = (genotypes_all - genotype_mean) / genotype_sd
+
+n_total = genotypes_all.shape[0]
+U, S, Vt = np.linalg.svd(Z / np.sqrt(n_total), full_matrices=False)
 PC = U * S
-fig, ax = plt.subplots(figsize=(6, 5))
-for k, name in enumerate(pop_names):
-    m = pop == k
-    ax.scatter(PC[m, 0], PC[m, 1], s=10, alpha=0.6, label=str(name))
-ax.set_xlabel('PC1'); ax.set_ylabel('PC2'); ax.set_title('Genotype PCA'); ax.legend()
-plt.tight_layout(); plt.show()
+
+PC_ref    = PC[:n_ref]
+PC_cohort = PC[n_ref:]
+
+fig, ax = plt.subplots(figsize=(7, 5.5))
+ax.scatter(PC_cohort[:, 0], PC_cohort[:, 1], s=8, alpha=0.4, color='lightgrey', label='cohort')
+for group_index, group_name in enumerate(superpop_names):
+    is_this_group = ref_pop == group_index
+    ax.scatter(PC_ref[is_this_group, 0], PC_ref[is_this_group, 1],
+               s=45, edgecolor='black', lw=0.3, label=f'ref: {group_name}')
+ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+ax.set_title('Genotype PCA — cohort anchored by a labelled reference panel')
+ax.legend(fontsize=8, markerscale=1.2); plt.tight_layout(); plt.show()
 """
 
 S3_PART3_MD = """\
-## Part 3: Correcting stratification with PCs
+## Part 3: Assigning continental ancestry with a reference panel
+
+In a biobank we rarely *know* anyone's ancestry — we only have the genotypes. The standard trick is
+exactly what we set up in Part 2: project everyone into PC space, then **use the labelled reference
+panel to name the clusters**.
+
+A convenient way to turn "near which reference cluster?" into an automatic label is a
+**classifier**. We train a **random forest** on the reference individuals (features = their top PCs,
+labels = their superpopulation), then ask it to predict a superpopulation for each cohort member.
+
+Crucially, the classifier also reports a **probability** for each prediction. Admixed individuals
+sit *between* clusters, so no single superpopulation gets a high probability — we use a
+**confidence threshold** to leave those people **unassigned** rather than forcing a wrong label.
+"""
+
+S3_EX3_STUDENT = """\
+# Exercise 3.1: train a random forest on the reference panel, then label the cohort.
+from sklearn.ensemble import RandomForestClassifier
+
+n_pc = 10                                   # number of PCs to use as features
+
+# Training data = the REFERENCE individuals (we know their superpopulation labels).
+reference_features = PC_ref[:, :n_pc]       # (n_ref, n_pc)
+reference_labels   = ref_pop                # known superpopulation index per reference person
+
+# Build and train the classifier.
+classifier = RandomForestClassifier(n_estimators=300, random_state=0)
+classifier.fit(reference_features, reference_labels)
+
+# Ask the classifier to label each COHORT individual from their PCs.
+cohort_features        = PC_cohort[:, :n_pc]
+predicted_probability  = classifier.predict_proba(cohort_features)   # (n_cohort, 5)
+best_probability       = predicted_probability.max(axis=1)           # confidence of top guess
+predicted_group_index  = predicted_probability.argmax(axis=1)        # which superpopulation
+
+# Only keep a label if the classifier is confident enough; otherwise call it 'Unassigned'.
+CONFIDENCE_THRESHOLD = 0.80                  # try changing this and see what happens
+# YOUR CODE HERE: boolean array, True where best_probability passes the threshold.
+is_confident = ???
+
+assigned_label = np.where(is_confident,
+                          superpop_names[predicted_group_index],
+                          'Unassigned')
+
+# Report how many cohort members got each label.
+labels_unique, label_counts = np.unique(assigned_label, return_counts=True)
+print(f"Confidence threshold = {CONFIDENCE_THRESHOLD}")
+for label, count in zip(labels_unique, label_counts):
+    print(f"  {label:11s}: {count:5d}  ({100*count/n_cohort:4.1f}%)")
+print("Q: Which groups get assigned confidently, and which get left 'Unassigned'?")
+"""
+
+S3_EX3_SOL = """\
+from sklearn.ensemble import RandomForestClassifier
+
+n_pc = 10
+reference_features = PC_ref[:, :n_pc]
+reference_labels   = ref_pop
+
+classifier = RandomForestClassifier(n_estimators=300, random_state=0)
+classifier.fit(reference_features, reference_labels)
+
+cohort_features        = PC_cohort[:, :n_pc]
+predicted_probability  = classifier.predict_proba(cohort_features)
+best_probability       = predicted_probability.max(axis=1)
+predicted_group_index  = predicted_probability.argmax(axis=1)
+
+CONFIDENCE_THRESHOLD = 0.80
+is_confident = best_probability >= CONFIDENCE_THRESHOLD
+
+assigned_label = np.where(is_confident,
+                          superpop_names[predicted_group_index],
+                          'Unassigned')
+
+labels_unique, label_counts = np.unique(assigned_label, return_counts=True)
+print(f"Confidence threshold = {CONFIDENCE_THRESHOLD}")
+for label, count in zip(labels_unique, label_counts):
+    print(f"  {label:11s}: {count:5d}  ({100*count/n_cohort:4.1f}%)")
+"""
+
+S3_PART3B_MD = """\
+Now **re-draw the PCA, colouring each cohort member by its assigned superpopulation** (and leaving
+the unassigned individuals grey). This is the figure a biobank publishes to describe its cohort.
+"""
+
+S3_EX3B_STUDENT = """\
+# Exercise 3.2: re-plot the cohort coloured by assigned superpopulation.
+fig, ax = plt.subplots(figsize=(7, 5.5))
+
+# Unassigned cohort members first, in grey.
+unassigned = assigned_label == 'Unassigned'
+ax.scatter(PC_cohort[unassigned, 0], PC_cohort[unassigned, 1],
+           s=8, alpha=0.4, color='lightgrey', label='Unassigned')
+
+# YOUR CODE HERE: one coloured scatter per superpopulation (assigned cohort members only).
+for group_name in superpop_names:
+    in_group = assigned_label == group_name
+    ax.scatter(PC_cohort[in_group, 0], PC_cohort[in_group, 1],
+               s=12, alpha=0.7, label=???)
+
+ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+ax.set_title('Cohort coloured by assigned continental ancestry')
+ax.legend(fontsize=8, markerscale=1.5); plt.tight_layout(); plt.show()
+print("Q: The 'Unassigned' points cluster between groups — what does that tell you about them?")
+"""
+
+S3_EX3B_SOL = """\
+fig, ax = plt.subplots(figsize=(7, 5.5))
+unassigned = assigned_label == 'Unassigned'
+ax.scatter(PC_cohort[unassigned, 0], PC_cohort[unassigned, 1],
+           s=8, alpha=0.4, color='lightgrey', label='Unassigned')
+for group_name in superpop_names:
+    in_group = assigned_label == group_name
+    ax.scatter(PC_cohort[in_group, 0], PC_cohort[in_group, 1],
+               s=12, alpha=0.7, label=str(group_name))
+ax.set_xlabel('PC1'); ax.set_ylabel('PC2')
+ax.set_title('Cohort coloured by assigned continental ancestry')
+ax.legend(fontsize=8, markerscale=1.5); plt.tight_layout(); plt.show()
+"""
+
+S3_PART4_MD = """\
+## Part 4: Correcting stratification with PCs
 
 Including the top PCs as **covariates** soaks up the ancestry signal, so the spurious associations
 disappear and $\\lambda_{GC}$ returns to ~1. Crucially, **true** signal survives — re-run the
 clean phenotype `y_clean` (which has real causal variants) and check its hits are still there.
+
+(We use `PC_cohort` — the cohort's own rows of the PCA — as the covariates.)
 """
 
-S3_EX3_STUDENT = """\
-# Exercise 3.1: GWAS with PC covariates
+S3_EX4_STUDENT = """\
+# Exercise 4.1: re-run the GWAS, this time correcting for ancestry with PC covariates.
 n_pc = 10
-covars = PC[:, :n_pc]              # top PCs as covariates
+ancestry_covariates = PC_cohort[:, :n_pc]     # the cohort's top PCs
 
-# YOUR CODE HERE — re-run the confounded-phenotype GWAS WITH PC covariates
-_, _, pvals_strat_pc = run_gwas(???, ???, ???)
+# YOUR CODE HERE: re-run the y_strat GWAS, passing the PCs as covariates.
+_, _, pvalues_strat_pc = run_gwas(y_strat, G, covars=???)
 
+# Compare the QQ plots before and after PC correction.
 fig, axes = plt.subplots(1, 2, figsize=(11, 5))
-qq_plot(pvals_strat, ax=axes[0]); axes[0].set_title(f'No PCs (lambda={lambda_gc(pvals_strat):.2f})')
-qq_plot(pvals_strat_pc, ax=axes[1], color='#59a14f')
-axes[1].set_title(f'With {n_pc} PCs (lambda={lambda_gc(pvals_strat_pc):.2f})')
+qq_plot(pvalues_strat, ax=axes[0])
+axes[0].set_title(f'No PCs  (lambda = {lambda_gc(pvalues_strat):.2f})')
+qq_plot(pvalues_strat_pc, ax=axes[1], color='#59a14f')
+axes[1].set_title(f'With {n_pc} PCs  (lambda = {lambda_gc(pvalues_strat_pc):.2f})')
 plt.tight_layout(); plt.show()
 
-# True signal must survive PC correction: GWAS of y_clean with PCs
-_, _, pvals_clean = run_gwas(y_clean, G, covars)
-print(f"y_clean hits at p<5e-8 (with PCs): {(pvals_clean < 5e-8).sum()}")
-print(f"  true causal SNPs recovered: "
-      f"{sum(pvals_clean[c] < 5e-8 for c in causal_idx)}/{len(causal_idx)}")
+# A real signal must SURVIVE the correction: GWAS of y_clean (true causal variants) with PCs.
+_, _, pvalues_clean = run_gwas(y_clean, G, covars=ancestry_covariates)
+n_recovered = sum(pvalues_clean[c] < 5e-8 for c in causal_idx)
+print(f"y_clean hits at p < 5e-8 (with PCs): {(pvalues_clean < 5e-8).sum()}")
+print(f"  true causal SNPs recovered: {n_recovered}/{len(causal_idx)}")
 print("Q: PCs removed the false signal but kept the real one — why?")
 """
 
-S3_EX3_SOL = """\
+S3_EX4_SOL = """\
 n_pc = 10
-covars = PC[:, :n_pc]
-_, _, pvals_strat_pc = run_gwas(y_strat, G, covars)
+ancestry_covariates = PC_cohort[:, :n_pc]
+
+_, _, pvalues_strat_pc = run_gwas(y_strat, G, covars=ancestry_covariates)
+
 fig, axes = plt.subplots(1, 2, figsize=(11, 5))
-qq_plot(pvals_strat, ax=axes[0]); axes[0].set_title(f'No PCs (lambda={lambda_gc(pvals_strat):.2f})')
-qq_plot(pvals_strat_pc, ax=axes[1], color='#59a14f')
-axes[1].set_title(f'With {n_pc} PCs (lambda={lambda_gc(pvals_strat_pc):.2f})')
+qq_plot(pvalues_strat, ax=axes[0])
+axes[0].set_title(f'No PCs  (lambda = {lambda_gc(pvalues_strat):.2f})')
+qq_plot(pvalues_strat_pc, ax=axes[1], color='#59a14f')
+axes[1].set_title(f'With {n_pc} PCs  (lambda = {lambda_gc(pvalues_strat_pc):.2f})')
 plt.tight_layout(); plt.show()
-_, _, pvals_clean = run_gwas(y_clean, G, covars)
-print(f"y_clean hits at p<5e-8 (with PCs): {(pvals_clean < 5e-8).sum()}")
-print(f"  true causal SNPs recovered: {sum(pvals_clean[c] < 5e-8 for c in causal_idx)}/{len(causal_idx)}")
+
+_, _, pvalues_clean = run_gwas(y_clean, G, covars=ancestry_covariates)
+n_recovered = sum(pvalues_clean[c] < 5e-8 for c in causal_idx)
+print(f"y_clean hits at p < 5e-8 (with PCs): {(pvalues_clean < 5e-8).sum()}")
+print(f"  true causal SNPs recovered: {n_recovered}/{len(causal_idx)}")
 """
 
 S3_CQ_MD = """\
@@ -2610,129 +2801,109 @@ S3_CQ_MD = """\
 """
 
 S3_CQ1_MD = """\
-### Challenge {N}: Admixture in PC space — ~10 min
+### Challenge {N}: Who gets left "Unassigned"? — ~12 min
 
-Admixed individuals carry ancestry from more than one population. Where do they fall in PC space?
-Re-plot the PCA, highlighting the admixed group, and colour them by their ancestry proportion.
+The classifier left some cohort members unlabelled. Are these really the **admixed** individuals?
+We can check, because the simulation stored each person's **true ancestry proportions** (`true_anc`,
+columns AFR, AMR, EAS, EUR, SAS). A person dominated by one ancestry has a *max* proportion near 1;
+an admixed person's largest proportion is much smaller. Then explore how the **threshold** trades
+off coverage against confidence.
 """
 
 S3_CQ1_STUDENT = """\
-# Challenge: admixed individuals in PC space
-Z = (G - G.mean(0)) / (G.std(0) + 1e-8)
-U, S, Vt = np.linalg.svd(Z / np.sqrt(N), full_matrices=False)
-PC = U * S
+# Challenge, Part A: are the 'Unassigned' people the admixed ones?
+# 'dominant ancestry fraction' = the largest of a person's 5 true ancestry proportions.
+dominant_ancestry_fraction = true_anc.max(axis=1)
 
-fig, ax = plt.subplots(figsize=(6.5, 5))
-# discrete populations in grey
-for k in range(3):
-    m = pop == k
-    ax.scatter(PC[m, 0], PC[m, 1], s=10, alpha=0.3, color='lightgrey')
-    ax.scatter(PC[m, 0].mean(), PC[m, 1].mean(), s=200, marker='X',
-               edgecolor='black', label=str(pop_names[k]))
-# YOUR CODE HERE: scatter the admixed individuals (pop==3), coloured by proportion of pop 1
-adm = pop == 3
-sc = ax.scatter(???, ???, c=admix_frac[adm, 0], cmap='viridis', s=25, edgecolor='k', lw=0.2)
-plt.colorbar(sc, ax=ax, label='ancestry fraction (Pop1)')
-ax.set_xlabel('PC1'); ax.set_ylabel('PC2'); ax.set_title('Admixture forms a cline in PC space')
-ax.legend(fontsize=8); plt.tight_layout(); plt.show()
-print("Q: Why do admixed individuals fall *between* the parental clusters?")
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.hist(dominant_ancestry_fraction[~unassigned], bins=30, alpha=0.6, label='assigned', color='#4e79a7')
+ax.hist(dominant_ancestry_fraction[ unassigned], bins=30, alpha=0.6, label='Unassigned', color='grey')
+ax.set_xlabel('largest true ancestry proportion (1.0 = single-ancestry)')
+ax.set_ylabel('cohort members'); ax.legend()
+ax.set_title('Unassigned individuals are the most admixed'); plt.tight_layout(); plt.show()
+print(f"Mean dominant ancestry — assigned: {dominant_ancestry_fraction[~unassigned].mean():.2f}, "
+      f"unassigned: {dominant_ancestry_fraction[unassigned].mean():.2f}")
+
+# Challenge, Part B: how does the threshold trade coverage against confidence?
+# YOUR CODE HERE: for each candidate threshold, what fraction of the cohort is assigned?
+thresholds = np.linspace(0.4, 1.0, 25)
+fraction_assigned = [ (best_probability >= ???).mean() for t in thresholds ]
+
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.plot(thresholds, fraction_assigned, marker='o', ms=4)
+ax.set_xlabel('confidence threshold'); ax.set_ylabel('fraction of cohort assigned')
+ax.set_title('Stricter threshold → fewer (but more confident) assignments')
+plt.tight_layout(); plt.show()
+print("Q: A stricter threshold drops more people. Who is dropped first, and is that fair?")
 """
 
 S3_CQ1_SOL = """\
-Z = (G - G.mean(0)) / (G.std(0) + 1e-8)
-U, S, Vt = np.linalg.svd(Z / np.sqrt(N), full_matrices=False)
-PC = U * S
-fig, ax = plt.subplots(figsize=(6.5, 5))
-for k in range(3):
-    m = pop == k
-    ax.scatter(PC[m, 0], PC[m, 1], s=10, alpha=0.3, color='lightgrey')
-    ax.scatter(PC[m, 0].mean(), PC[m, 1].mean(), s=200, marker='X',
-               edgecolor='black', label=str(pop_names[k]))
-adm = pop == 3
-sc = ax.scatter(PC[adm, 0], PC[adm, 1], c=admix_frac[adm, 0], cmap='viridis',
-                s=25, edgecolor='k', lw=0.2)
-plt.colorbar(sc, ax=ax, label='ancestry fraction (Pop1)')
-ax.set_xlabel('PC1'); ax.set_ylabel('PC2'); ax.set_title('Admixture forms a cline in PC space')
-ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+dominant_ancestry_fraction = true_anc.max(axis=1)
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.hist(dominant_ancestry_fraction[~unassigned], bins=30, alpha=0.6, label='assigned', color='#4e79a7')
+ax.hist(dominant_ancestry_fraction[ unassigned], bins=30, alpha=0.6, label='Unassigned', color='grey')
+ax.set_xlabel('largest true ancestry proportion (1.0 = single-ancestry)')
+ax.set_ylabel('cohort members'); ax.legend()
+ax.set_title('Unassigned individuals are the most admixed'); plt.tight_layout(); plt.show()
+print(f"Mean dominant ancestry — assigned: {dominant_ancestry_fraction[~unassigned].mean():.2f}, "
+      f"unassigned: {dominant_ancestry_fraction[unassigned].mean():.2f}")
+
+thresholds = np.linspace(0.4, 1.0, 25)
+fraction_assigned = [ (best_probability >= t).mean() for t in thresholds ]
+fig, ax = plt.subplots(figsize=(7, 4))
+ax.plot(thresholds, fraction_assigned, marker='o', ms=4)
+ax.set_xlabel('confidence threshold'); ax.set_ylabel('fraction of cohort assigned')
+ax.set_title('Stricter threshold → fewer (but more confident) assignments')
+plt.tight_layout(); plt.show()
+# Admixed people are dropped first — a real cost, since ancestry-restricted analyses then
+# systematically exclude them.
 """
 
 S3_CQ2_MD = """\
-### Challenge {N}: Genomic control vs PCA — ~10 min
-
-**Genomic control (GC)** is a blunter fix: divide every test statistic by $\\lambda_{GC}$. It
-rescales globally but, unlike PCA, can't tell true polygenic signal from stratification. Apply GC
-to the confounded GWAS and compare $\\lambda_{GC}$ before, after GC, and after PCA.
-"""
-
-S3_CQ2_STUDENT = """\
-# Challenge: genomic control
-chi2 = stats.chi2.isf(np.clip(pvals_strat, 1e-300, 1), df=1)
-lam  = lambda_gc(pvals_strat)
-
-# YOUR CODE HERE: divide the chi-squared statistics by lambda, convert back to p-values
-chi2_gc = ???
-pvals_gc = stats.chi2.sf(chi2_gc, df=1)
-
-print(f"lambda_GC  raw : {lambda_gc(pvals_strat):.2f}")
-print(f"lambda_GC  GC  : {lambda_gc(pvals_gc):.2f}   (GC forces median to 1 by construction)")
-print(f"hits raw={int((pvals_strat<5e-8).sum())}, after GC={int((pvals_gc<5e-8).sum())}, "
-      f"after PCA={int((pvals_strat_pc<5e-8).sum())}")
-print("Q: GC and PCA both remove inflation here — when would GC alone be a poor choice?")
-"""
-
-S3_CQ2_SOL = """\
-chi2 = stats.chi2.isf(np.clip(pvals_strat, 1e-300, 1), df=1)
-lam  = lambda_gc(pvals_strat)
-chi2_gc = chi2 / lam
-pvals_gc = stats.chi2.sf(chi2_gc, df=1)
-print(f"lambda_GC  raw : {lambda_gc(pvals_strat):.2f}")
-print(f"lambda_GC  GC  : {lambda_gc(pvals_gc):.2f}")
-print(f"hits raw={int((pvals_strat<5e-8).sum())}, after GC={int((pvals_gc<5e-8).sum())}, "
-      f"after PCA={int((pvals_strat_pc<5e-8).sum())}")
-# GC rescales everything globally; it cannot separate true polygenic signal from stratification,
-# and over-corrects real associations. PCA models the structure directly.
-"""
-
-S3_CQ3_MD = """\
 ### Challenge {N}: Relatedness and the GRM — ~12 min
 
 Close relatives share long genomic segments, which (like ancestry) violates the independence GWAS
 assumes. The **genetic relatedness matrix** $\\text{GRM} = \\frac{1}{M} Z Z^\\top$ quantifies it.
-A few **sibling pairs** were hidden in the data — find them, and think about why mixed models exist.
+A few **sibling pairs** were hidden in the cohort — find them, and think about why mixed models exist.
 """
 
-S3_CQ3_STUDENT = """\
-# Challenge: genetic relatedness matrix
-Z = (G - G.mean(0)) / (G.std(0) + 1e-8)
+S3_CQ2_STUDENT = """\
+# Challenge: build the genetic relatedness matrix (GRM) of the cohort and find the relatives.
+# Standardise the cohort genotypes (mean 0, sd 1 per SNP).
+Z_cohort = (G - G.mean(axis=0)) / (G.std(axis=0) + 1e-8)
 
-# YOUR CODE HERE: GRM = Z Z^T / M  (diagonal ≈ 1 = self; off-diagonal ≈ kinship*2)
+# YOUR CODE HERE: GRM = Z Zᵀ / (number of SNPs).
+#   diagonal ≈ 1   (each person with themselves)
+#   off-diagonal ≈ 2 × kinship  (≈ 0.5 for full siblings/parent-child, ≈ 0 for strangers)
 GRM = ???
 
-off = GRM[np.triu_indices(N, k=1)]
+# Histogram of all off-diagonal (between-person) relatedness values.
+off_diagonal = GRM[np.triu_indices(n_cohort, k=1)]
 fig, ax = plt.subplots(figsize=(7, 3))
-ax.hist(off, bins=120, color='steelblue'); ax.set_yscale('log')
-ax.axvline(0.5, color='red', ls='--', label='sib/parent ≈ 0.5')
-ax.set_xlabel('GRM off-diagonal (relatedness)'); ax.set_ylabel('pairs (log)'); ax.legend()
+ax.hist(off_diagonal, bins=120, color='steelblue'); ax.set_yscale('log')
+ax.axvline(0.5, color='red', ls='--', label='sib / parent-child ≈ 0.5')
+ax.set_xlabel('GRM off-diagonal (relatedness)'); ax.set_ylabel('pairs (log scale)'); ax.legend()
 ax.set_title('Most pairs ≈ 0; a few related pairs stand out'); plt.tight_layout(); plt.show()
 
-print("Injected sibling pairs (should be ≈ 0.5):")
-for i, j in rel_pairs:
-    print(f"  rows {i},{j}: GRM = {GRM[i, j]:.2f}")
+print("Injected sibling pairs (relatedness should be ≈ 0.5):")
+for person_i, person_j in rel_pairs:
+    print(f"  rows {person_i},{person_j}: GRM = {GRM[person_i, person_j]:.2f}")
 print("Q: Why does ignoring relatedness inflate test statistics, and how do mixed models help?")
 """
 
-S3_CQ3_SOL = """\
-Z = (G - G.mean(0)) / (G.std(0) + 1e-8)
-GRM = Z @ Z.T / M
-off = GRM[np.triu_indices(N, k=1)]
+S3_CQ2_SOL = """\
+Z_cohort = (G - G.mean(axis=0)) / (G.std(axis=0) + 1e-8)
+GRM = Z_cohort @ Z_cohort.T / n_snps
+
+off_diagonal = GRM[np.triu_indices(n_cohort, k=1)]
 fig, ax = plt.subplots(figsize=(7, 3))
-ax.hist(off, bins=120, color='steelblue'); ax.set_yscale('log')
-ax.axvline(0.5, color='red', ls='--', label='sib/parent ≈ 0.5')
-ax.set_xlabel('GRM off-diagonal (relatedness)'); ax.set_ylabel('pairs (log)'); ax.legend()
+ax.hist(off_diagonal, bins=120, color='steelblue'); ax.set_yscale('log')
+ax.axvline(0.5, color='red', ls='--', label='sib / parent-child ≈ 0.5')
+ax.set_xlabel('GRM off-diagonal (relatedness)'); ax.set_ylabel('pairs (log scale)'); ax.legend()
 ax.set_title('Most pairs ≈ 0; a few related pairs stand out'); plt.tight_layout(); plt.show()
-print("Injected sibling pairs (should be ≈ 0.5):")
-for i, j in rel_pairs:
-    print(f"  rows {i},{j}: GRM = {GRM[i, j]:.2f}")
+print("Injected sibling pairs (relatedness should be ≈ 0.5):")
+for person_i, person_j in rel_pairs:
+    print(f"  rows {person_i},{person_j}: GRM = {GRM[person_i, person_j]:.2f}")
 # Relatives share segments → correlated residuals → inflated statistics. A linear mixed model
 # puts the GRM in the covariance of a random effect, accounting for this structure.
 """
@@ -2762,10 +2933,13 @@ def build_session3(answers=False, run=False, nb_path=None):
         *ex(S3_EX2_STUDENT, S3_EX2_SOL),
         md(S3_PART3_MD),
         *ex(S3_EX3_STUDENT, S3_EX3_SOL),
+        md(S3_PART3B_MD),
+        *ex(S3_EX3B_STUDENT, S3_EX3B_SOL),
+        md(S3_PART4_MD),
+        *ex(S3_EX4_STUDENT, S3_EX4_SOL),
         md(S3_CQ_MD),
         chmd(S3_CQ1_MD), *ex(S3_CQ1_STUDENT, S3_CQ1_SOL),
         chmd(S3_CQ2_MD), *ex(S3_CQ2_STUDENT, S3_CQ2_SOL),
-        chmd(S3_CQ3_MD), *ex(S3_CQ3_STUDENT, S3_CQ3_SOL),
     ]
     return notebook(cells)
 
@@ -2821,18 +2995,21 @@ just a *tag*, not the causal variant.
 """
 
 S4_EX1_STUDENT = """\
-# Exercise 1.1: regional GWAS + LocusZoom of Locus A
-# YOUR CODE HERE — run the GWAS for the locus
-betas, ses, pvals = run_gwas(???, ???)
-lead = int(np.argmin(pvals))
-r2   = r2_with(GA, lead)
+# Exercise 1.1: regional GWAS + LocusZoom of Locus A.
+# YOUR CODE HERE: run the GWAS of phenotype yA on the locus genotypes GA.
+betas, std_errors, pvalues = run_gwas(???, ???)
 
-print(f"Genome-wide significant variants: {(pvals < 5e-8).sum()} of {len(pvals)}")
-print(f"Marginal lead = variant {lead} (pos {posA[lead]} kb);  true causal = variant {causalA}")
+lead_variant = int(np.argmin(pvalues))          # most significant ("lead") variant
+r2_to_lead   = r2_with(GA, lead_variant)         # LD (r²) of every variant with the lead
+
+print(f"Genome-wide significant variants: {(pvalues < 5e-8).sum()} of {len(pvalues)}")
+print(f"Marginal lead = variant {lead_variant} (pos {posA[lead_variant]} kb);  "
+      f"true causal = variant {causalA}")
 
 fig, ax = plt.subplots(figsize=(11, 4))
-sc = ax.scatter(posA, -np.log10(pvals + 1e-300), c=r2, cmap='RdYlBu_r', vmin=0, vmax=1, s=18)
-ax.scatter(posA[causalA], -np.log10(pvals[causalA] + 1e-300), marker='*', s=320,
+sc = ax.scatter(posA, -np.log10(pvalues + 1e-300), c=r2_to_lead, cmap='RdYlBu_r',
+                vmin=0, vmax=1, s=18)
+ax.scatter(posA[causalA], -np.log10(pvalues[causalA] + 1e-300), marker='*', s=320,
            color='lime', edgecolor='black', zorder=5, label='true causal')
 plt.colorbar(sc, ax=ax, label='$r^2$ with lead'); ax.axhline(-np.log10(5e-8), color='red', ls='--')
 ax.set_xlabel('Position (kb)'); ax.set_ylabel(r'$-\\log_{10}p$')
@@ -2842,14 +3019,19 @@ print("Q: How many variants would you have to follow up if you took every signif
 """
 
 S4_EX1_SOL = """\
-betas, ses, pvals = run_gwas(yA, GA)
-lead = int(np.argmin(pvals))
-r2   = r2_with(GA, lead)
-print(f"Genome-wide significant variants: {(pvals < 5e-8).sum()} of {len(pvals)}")
-print(f"Marginal lead = variant {lead} (pos {posA[lead]} kb);  true causal = variant {causalA}")
+betas, std_errors, pvalues = run_gwas(yA, GA)
+
+lead_variant = int(np.argmin(pvalues))
+r2_to_lead   = r2_with(GA, lead_variant)
+
+print(f"Genome-wide significant variants: {(pvalues < 5e-8).sum()} of {len(pvalues)}")
+print(f"Marginal lead = variant {lead_variant} (pos {posA[lead_variant]} kb);  "
+      f"true causal = variant {causalA}")
+
 fig, ax = plt.subplots(figsize=(11, 4))
-sc = ax.scatter(posA, -np.log10(pvals + 1e-300), c=r2, cmap='RdYlBu_r', vmin=0, vmax=1, s=18)
-ax.scatter(posA[causalA], -np.log10(pvals[causalA] + 1e-300), marker='*', s=320,
+sc = ax.scatter(posA, -np.log10(pvalues + 1e-300), c=r2_to_lead, cmap='RdYlBu_r',
+                vmin=0, vmax=1, s=18)
+ax.scatter(posA[causalA], -np.log10(pvalues[causalA] + 1e-300), marker='*', s=320,
            color='lime', edgecolor='black', zorder=5, label='true causal')
 plt.colorbar(sc, ax=ax, label='$r^2$ with lead'); ax.axhline(-np.log10(5e-8), color='red', ls='--')
 ax.set_xlabel('Position (kb)'); ax.set_ylabel(r'$-\\log_{10}p$')
@@ -2863,32 +3045,91 @@ S4_PART2_MD = """\
 A simple way to count **independent** signals: take the lead variant, add it as a **covariate**,
 and re-run the GWAS. If a signal remains, there's a second independent association; repeat until
 nothing is significant. (This isn't a credible set, but it builds the right intuition.)
+
+We'll **re-draw the LocusZoom after every round**, so you can watch the peak collapse once its
+causal variant is conditioned out.
 """
 
 S4_EX2_STUDENT = """\
-# Exercise 2.1: iterative conditional analysis on Locus A
-signals = []
-_, _, pv = run_gwas(yA, GA)
-while pv.min() < 5e-8:
-    lead = int(np.argmin(pv))
-    signals.append(lead)
-    # YOUR CODE HERE: re-run the GWAS conditioning on ALL signals found so far
-    # (pass the signal genotypes as covariates)
-    _, _, pv = run_gwas(yA, GA, ???)
+# Exercise 2.1: iterative conditional analysis on Locus A, with a LocusZoom after each round.
 
-print(f"Independent signals found: {len(signals)}  → variants {signals}")
-print(f"(Locus A has 1 causal variant — do you recover a single independent signal?)")
+# A small helper that draws one LocusZoom-style plot (−log10 p, coloured by r² with the round's lead).
+def plot_locuszoom(pvalues, lead_variant, title):
+    r2_to_lead = r2_with(GA, lead_variant)
+    fig, ax = plt.subplots(figsize=(11, 3.2))
+    sc = ax.scatter(posA, -np.log10(pvalues + 1e-300), c=r2_to_lead,
+                    cmap='RdYlBu_r', vmin=0, vmax=1, s=16)
+    ax.scatter(posA[causalA], -np.log10(pvalues[causalA] + 1e-300), marker='*', s=280,
+               color='lime', edgecolor='black', zorder=5, label='true causal')
+    ax.axvline(posA[lead_variant], color='grey', ls=':', label=f'round lead (variant {lead_variant})')
+    ax.axhline(-np.log10(5e-8), color='red', ls='--')
+    plt.colorbar(sc, ax=ax, label='r² with round lead')
+    ax.set_xlabel('Position (kb)'); ax.set_ylabel(r'$-\\log_{10}p$')
+    ax.set_title(title); ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+
+significance_threshold = 5e-8
+conditioned_on = []                         # variants we have added as covariates so far
+
+# Round 0: the ordinary GWAS, with nothing conditioned out yet.
+_, _, pvalues = run_gwas(yA, GA)
+round_number = 0
+
+while round_number < 6:                     # safety cap on the number of rounds
+    lead_variant = int(np.argmin(pvalues))
+    conditioning_text = conditioned_on if conditioned_on else 'nothing'
+    plot_locuszoom(pvalues, lead_variant,
+                   f'Round {round_number}: conditioning on {conditioning_text}  '
+                   f'(lead variant {lead_variant}, p = {pvalues[lead_variant]:.1e})')
+
+    # Stop once the strongest remaining signal is no longer genome-wide significant.
+    if pvalues[lead_variant] >= significance_threshold:
+        print("No genome-wide-significant signal remains — stop.")
+        break
+
+    # Otherwise, record this lead and condition on ALL signals found so far.
+    conditioned_on.append(lead_variant)
+    signal_genotypes = GA[:, conditioned_on]    # genotype columns of every signal so far
+    # YOUR CODE HERE: re-run the GWAS, passing the signal genotypes as covariates.
+    _, _, pvalues = run_gwas(yA, GA, covars=???)
+    round_number += 1
+
+print(f"Independent signals found: {len(conditioned_on)}  → variants {conditioned_on}")
+print("(Locus A has 1 causal variant — do you recover a single independent signal?)")
 print("Q: After conditioning on the lead, why do all the other peak variants drop out?")
 """
 
 S4_EX2_SOL = """\
-signals = []
-_, _, pv = run_gwas(yA, GA)
-while pv.min() < 5e-8:
-    lead = int(np.argmin(pv))
-    signals.append(lead)
-    _, _, pv = run_gwas(yA, GA, GA[:, signals])
-print(f"Independent signals found: {len(signals)}  → variants {signals}")
+def plot_locuszoom(pvalues, lead_variant, title):
+    r2_to_lead = r2_with(GA, lead_variant)
+    fig, ax = plt.subplots(figsize=(11, 3.2))
+    sc = ax.scatter(posA, -np.log10(pvalues + 1e-300), c=r2_to_lead,
+                    cmap='RdYlBu_r', vmin=0, vmax=1, s=16)
+    ax.scatter(posA[causalA], -np.log10(pvalues[causalA] + 1e-300), marker='*', s=280,
+               color='lime', edgecolor='black', zorder=5, label='true causal')
+    ax.axvline(posA[lead_variant], color='grey', ls=':', label=f'round lead (variant {lead_variant})')
+    ax.axhline(-np.log10(5e-8), color='red', ls='--')
+    plt.colorbar(sc, ax=ax, label='r² with round lead')
+    ax.set_xlabel('Position (kb)'); ax.set_ylabel(r'$-\\log_{10}p$')
+    ax.set_title(title); ax.legend(fontsize=8); plt.tight_layout(); plt.show()
+
+significance_threshold = 5e-8
+conditioned_on = []
+_, _, pvalues = run_gwas(yA, GA)
+round_number = 0
+while round_number < 6:
+    lead_variant = int(np.argmin(pvalues))
+    conditioning_text = conditioned_on if conditioned_on else 'nothing'
+    plot_locuszoom(pvalues, lead_variant,
+                   f'Round {round_number}: conditioning on {conditioning_text}  '
+                   f'(lead variant {lead_variant}, p = {pvalues[lead_variant]:.1e})')
+    if pvalues[lead_variant] >= significance_threshold:
+        print("No genome-wide-significant signal remains — stop.")
+        break
+    conditioned_on.append(lead_variant)
+    signal_genotypes = GA[:, conditioned_on]
+    _, _, pvalues = run_gwas(yA, GA, covars=signal_genotypes)
+    round_number += 1
+print(f"Independent signals found: {len(conditioned_on)}  → variants {conditioned_on}")
 # Conditioning on the lead absorbs the shared LD signal, so its tag SNPs are no longer significant.
 """
 
@@ -2906,40 +3147,50 @@ PIPs; the **95% credible set** is the smallest set of variants whose PIPs sum to
 """
 
 S4_EX3_STUDENT = """\
-# Exercise 3.1: PIP and the 95% credible set for Locus A
-betas, ses, pvals = run_gwas(yA, GA)
-z = betas / ses
-W = 0.04                          # prior variance of the effect size
-V = ses**2
-r = W / (V + W)
+# Exercise 3.1: PIP and the 95% credible set for Locus A.
+betas, std_errors, pvalues = run_gwas(yA, GA)
+z = betas / std_errors
 
-# YOUR CODE HERE
-log_abf = ???                     # 0.5*log(1-r) + 0.5*z^2*r
-abf     = np.exp(log_abf - log_abf.max())   # stabilised
-pip     = ???                     # normalise to sum to 1
+# Wakefield approximate Bayes factor, one variant at a time.
+prior_variance    = 0.04                     # W: prior variance of the true effect size
+sampling_variance = std_errors**2            # V: squared standard error of each estimate
+r = prior_variance / (sampling_variance + prior_variance)
 
-# 95% credible set: smallest set of top-PIP variants with cumulative PIP >= 0.95
-order = np.argsort(pip)[::-1]
-cum   = np.cumsum(pip[order])
-cred  = order[:np.searchsorted(cum, 0.95) + 1]
+# YOUR CODE HERE: the log approximate Bayes factor = 0.5*log(1 - r) + 0.5 * z^2 * r
+log_abf = ???
+abf     = np.exp(log_abf - log_abf.max())    # exponentiate (subtract max for numerical stability)
+# YOUR CODE HERE: posterior inclusion probabilities = abf normalised to sum to 1
+pip     = ???
 
-print(f"95% credible set: {sorted(cred.tolist())}  ({len(cred)} variants)")
-print(f"Contains the true causal ({causalA})? {causalA in cred.tolist()}")
+# 95% credible set: the smallest set of top-PIP variants whose PIPs sum to >= 0.95.
+order          = np.argsort(pip)[::-1]                 # variants from highest to lowest PIP
+cumulative_pip = np.cumsum(pip[order])
+credible_set   = order[:np.searchsorted(cumulative_pip, 0.95) + 1]
+
+print(f"95% credible set: {sorted(credible_set.tolist())}  ({len(credible_set)} variants)")
+print(f"Contains the true causal ({causalA})? {causalA in credible_set.tolist()}")
 print(f"PIP of the true causal: {pip[causalA]:.2f}   (max PIP in locus: {pip.max():.2f})")
 print("Q: Fine-mapping cut the significant peak down to how few variants?")
 """
 
 S4_EX3_SOL = """\
-betas, ses, pvals = run_gwas(yA, GA)
-z = betas / ses
-W = 0.04; V = ses**2; r = W / (V + W)
-log_abf = 0.5*np.log(1-r) + 0.5*z**2*r
+betas, std_errors, pvalues = run_gwas(yA, GA)
+z = betas / std_errors
+
+prior_variance    = 0.04
+sampling_variance = std_errors**2
+r = prior_variance / (sampling_variance + prior_variance)
+
+log_abf = 0.5*np.log(1 - r) + 0.5*z**2*r
 abf     = np.exp(log_abf - log_abf.max())
 pip     = abf / abf.sum()
-order = np.argsort(pip)[::-1]; cum = np.cumsum(pip[order])
-cred  = order[:np.searchsorted(cum, 0.95) + 1]
-print(f"95% credible set: {sorted(cred.tolist())}  ({len(cred)} variants)")
-print(f"Contains the true causal ({causalA})? {causalA in cred.tolist()}")
+
+order          = np.argsort(pip)[::-1]
+cumulative_pip = np.cumsum(pip[order])
+credible_set   = order[:np.searchsorted(cumulative_pip, 0.95) + 1]
+
+print(f"95% credible set: {sorted(credible_set.tolist())}  ({len(credible_set)} variants)")
+print(f"Contains the true causal ({causalA})? {causalA in credible_set.tolist()}")
 print(f"PIP of the true causal: {pip[causalA]:.2f}   (max PIP in locus: {pip.max():.2f})")
 """
 
@@ -2957,29 +3208,37 @@ stand out as the handful of high-PIP variants. Mark the true causal.
 """
 
 S4_CQ1_STUDENT = """\
-# Challenge: PIP LocusZoom for Locus A  (reuse pip, cred from Part 3)
+# Challenge: PIP LocusZoom for Locus A  (reuse pip, credible_set from Part 3).
+is_in_credible_set = np.zeros(len(pip), bool)
+is_in_credible_set[credible_set] = True
+
 fig, ax = plt.subplots(figsize=(11, 4))
-in_cs = np.zeros(len(pip), bool); in_cs[cred] = True
-ax.scatter(posA[~in_cs], pip[~in_cs], s=15, color='lightgrey', label='not in credible set')
-ax.scatter(posA[in_cs], pip[in_cs], s=40, color='#e15759', zorder=4, label='95% credible set')
+ax.scatter(posA[~is_in_credible_set], pip[~is_in_credible_set], s=15, color='lightgrey',
+           label='not in credible set')
+ax.scatter(posA[is_in_credible_set], pip[is_in_credible_set], s=40, color='#e15759', zorder=4,
+           label='95% credible set')
 ax.scatter(posA[causalA], pip[causalA], marker='*', s=320, color='lime',
            edgecolor='black', zorder=5, label='true causal')
 ax.set_xlabel('Position (kb)'); ax.set_ylabel('PIP'); ax.set_title('Fine-mapping: PIP by position')
 ax.legend(); plt.tight_layout(); plt.show()
-print(f"Sum of PIP over the credible set: {pip[cred].sum():.2f}")
+print(f"Sum of PIP over the credible set: {pip[credible_set].sum():.2f}")
 print("Q: The whole significant peak collapses to a few high-PIP variants — why those?")
 """
 
 S4_CQ1_SOL = """\
+is_in_credible_set = np.zeros(len(pip), bool)
+is_in_credible_set[credible_set] = True
+
 fig, ax = plt.subplots(figsize=(11, 4))
-in_cs = np.zeros(len(pip), bool); in_cs[cred] = True
-ax.scatter(posA[~in_cs], pip[~in_cs], s=15, color='lightgrey', label='not in credible set')
-ax.scatter(posA[in_cs], pip[in_cs], s=40, color='#e15759', zorder=4, label='95% credible set')
+ax.scatter(posA[~is_in_credible_set], pip[~is_in_credible_set], s=15, color='lightgrey',
+           label='not in credible set')
+ax.scatter(posA[is_in_credible_set], pip[is_in_credible_set], s=40, color='#e15759', zorder=4,
+           label='95% credible set')
 ax.scatter(posA[causalA], pip[causalA], marker='*', s=320, color='lime',
            edgecolor='black', zorder=5, label='true causal')
 ax.set_xlabel('Position (kb)'); ax.set_ylabel('PIP'); ax.set_title('Fine-mapping: PIP by position')
 ax.legend(); plt.tight_layout(); plt.show()
-print(f"Sum of PIP over the credible set: {pip[cred].sum():.2f}")
+print(f"Sum of PIP over the credible set: {pip[credible_set].sum():.2f}")
 """
 
 S4_CQ2_MD = """\
@@ -2990,36 +3249,46 @@ the individuals (N/2, N/4) and watch it **grow** as power falls.
 """
 
 S4_CQ2_STUDENT = """\
-# Challenge: credible-set size vs sample size
-def credible_set(y, G, W=0.04):
-    b, se, _ = run_gwas(y, G)
-    z = b / se; V = se**2; rr = W / (V + W)
-    la = 0.5*np.log(1-rr) + 0.5*z**2*rr
-    p = np.exp(la - la.max()); p /= p.sum()
-    o = np.argsort(p)[::-1]; c = np.cumsum(p[o])
-    return o[:np.searchsorted(c, 0.95) + 1]
+# Challenge: credible-set size vs sample size.
+def compute_credible_set(phenotype, genotypes, prior_variance=0.04):
+    \"\"\"Return the 95% credible set (array of variant indices) for a locus.\"\"\"
+    betas, std_errors, _ = run_gwas(phenotype, genotypes)
+    z = betas / std_errors
+    sampling_variance = std_errors**2
+    r = prior_variance / (sampling_variance + prior_variance)
+    log_abf = 0.5*np.log(1 - r) + 0.5*z**2*r
+    pip = np.exp(log_abf - log_abf.max()); pip /= pip.sum()
+    order = np.argsort(pip)[::-1]
+    cumulative_pip = np.cumsum(pip[order])
+    return order[:np.searchsorted(cumulative_pip, 0.95) + 1]
 
 rng = np.random.default_rng(0)
-for frac in [1.0, 0.5, 0.25]:
-    n = int(frac * len(yA)); idx = rng.choice(len(yA), n, replace=False)
-    # YOUR CODE HERE: credible set on this subsample
-    cs = credible_set(???, ???)
+for fraction in [1.0, 0.5, 0.25]:
+    n = int(fraction * len(yA))
+    subsample = rng.choice(len(yA), n, replace=False)
+    # YOUR CODE HERE: compute the credible set on this subsample of individuals.
+    cs = compute_credible_set(???, ???)
     print(f"N={n:5d}: credible-set size = {len(cs):3d}, contains causal = {causalA in cs.tolist()}")
 print("Q: Why does a smaller sample give a larger (less useful) credible set?")
 """
 
 S4_CQ2_SOL = """\
-def credible_set(y, G, W=0.04):
-    b, se, _ = run_gwas(y, G)
-    z = b / se; V = se**2; rr = W / (V + W)
-    la = 0.5*np.log(1-rr) + 0.5*z**2*rr
-    p = np.exp(la - la.max()); p /= p.sum()
-    o = np.argsort(p)[::-1]; c = np.cumsum(p[o])
-    return o[:np.searchsorted(c, 0.95) + 1]
+def compute_credible_set(phenotype, genotypes, prior_variance=0.04):
+    betas, std_errors, _ = run_gwas(phenotype, genotypes)
+    z = betas / std_errors
+    sampling_variance = std_errors**2
+    r = prior_variance / (sampling_variance + prior_variance)
+    log_abf = 0.5*np.log(1 - r) + 0.5*z**2*r
+    pip = np.exp(log_abf - log_abf.max()); pip /= pip.sum()
+    order = np.argsort(pip)[::-1]
+    cumulative_pip = np.cumsum(pip[order])
+    return order[:np.searchsorted(cumulative_pip, 0.95) + 1]
+
 rng = np.random.default_rng(0)
-for frac in [1.0, 0.5, 0.25]:
-    n = int(frac * len(yA)); idx = rng.choice(len(yA), n, replace=False)
-    cs = credible_set(yA[idx], GA[idx])
+for fraction in [1.0, 0.5, 0.25]:
+    n = int(fraction * len(yA))
+    subsample = rng.choice(len(yA), n, replace=False)
+    cs = compute_credible_set(yA[subsample], GA[subsample])
     print(f"N={n:5d}: credible-set size = {len(cs):3d}, contains causal = {causalA in cs.tolist()}")
 """
 
@@ -3032,34 +3301,61 @@ causals — then use conditional analysis to recover the second signal (the idea
 """
 
 S4_CQ3_STUDENT = """\
-# Challenge: two causal variants (Locus B)
-b, se, pv = run_gwas(yB, GB)
-z = b/se; W=0.04; V=se**2; rr=W/(V+W)
-la = 0.5*np.log(1-rr)+0.5*z**2*rr; pip_b = np.exp(la-la.max()); pip_b/=pip_b.sum()
-o=np.argsort(pip_b)[::-1]; cum=np.cumsum(pip_b[o]); cred_b=o[:np.searchsorted(cum,0.95)+1]
-print(f"True causals: {causalB.tolist()}")
-print(f"Single-causal 95% credible set: {sorted(cred_b.tolist())}")
-print(f"  captures both causals? {all(c in cred_b.tolist() for c in causalB)}")
+# Challenge: two causal variants (Locus B).
+# Step 1. Build the single-causal credible set, exactly as in Part 3.
+betas, std_errors, pvalues = run_gwas(yB, GB)
+z = betas / std_errors
+prior_variance = 0.04
+sampling_variance = std_errors**2
+r = prior_variance / (sampling_variance + prior_variance)
+log_abf = 0.5*np.log(1 - r) + 0.5*z**2*r
+abf = np.exp(log_abf - log_abf.max())
+pip = abf / abf.sum()
 
-# YOUR CODE HERE: condition on the lead, then refit — does the SECOND causal now stand out?
-lead = int(np.argmin(pv))
-_, _, pv2 = run_gwas(yB, GB, ???)
-print(f"After conditioning on variant {lead}: new lead = {int(np.argmin(pv2))} "
+order = np.argsort(pip)[::-1]
+cumulative_pip = np.cumsum(pip[order])
+credible_set = order[:np.searchsorted(cumulative_pip, 0.95) + 1]
+
+print(f"True causals: {causalB.tolist()}")
+print(f"Single-causal 95% credible set: {sorted(credible_set.tolist())}")
+print(f"  captures BOTH causals? {all(c in credible_set.tolist() for c in causalB)}")
+
+# Step 2. Condition on the lead variant, then refit — does the SECOND causal now stand out?
+lead_variant   = int(np.argmin(pvalues))
+lead_genotype  = GB[:, [lead_variant]]          # genotype of the lead, as a single covariate column
+# YOUR CODE HERE: re-run the GWAS, passing the lead genotype as a covariate.
+_, _, pvalues_conditional = run_gwas(yB, GB, covars=???)
+
+new_lead = int(np.argmin(pvalues_conditional))
+print(f"After conditioning on variant {lead_variant}: new lead = {new_lead} "
       f"(near the other causal {causalB.tolist()})")
 print("Q: Why does a single-causal credible set fail when there are two signals?")
 """
 
 S4_CQ3_SOL = """\
-b, se, pv = run_gwas(yB, GB)
-z = b/se; W=0.04; V=se**2; rr=W/(V+W)
-la = 0.5*np.log(1-rr)+0.5*z**2*rr; pip_b = np.exp(la-la.max()); pip_b/=pip_b.sum()
-o=np.argsort(pip_b)[::-1]; cum=np.cumsum(pip_b[o]); cred_b=o[:np.searchsorted(cum,0.95)+1]
+betas, std_errors, pvalues = run_gwas(yB, GB)
+z = betas / std_errors
+prior_variance = 0.04
+sampling_variance = std_errors**2
+r = prior_variance / (sampling_variance + prior_variance)
+log_abf = 0.5*np.log(1 - r) + 0.5*z**2*r
+abf = np.exp(log_abf - log_abf.max())
+pip = abf / abf.sum()
+
+order = np.argsort(pip)[::-1]
+cumulative_pip = np.cumsum(pip[order])
+credible_set = order[:np.searchsorted(cumulative_pip, 0.95) + 1]
+
 print(f"True causals: {causalB.tolist()}")
-print(f"Single-causal 95% credible set: {sorted(cred_b.tolist())}")
-print(f"  captures both causals? {all(c in cred_b.tolist() for c in causalB)}")
-lead = int(np.argmin(pv))
-_, _, pv2 = run_gwas(yB, GB, GB[:, [lead]])
-print(f"After conditioning on variant {lead}: new lead = {int(np.argmin(pv2))} "
+print(f"Single-causal 95% credible set: {sorted(credible_set.tolist())}")
+print(f"  captures BOTH causals? {all(c in credible_set.tolist() for c in causalB)}")
+
+lead_variant   = int(np.argmin(pvalues))
+lead_genotype  = GB[:, [lead_variant]]
+_, _, pvalues_conditional = run_gwas(yB, GB, covars=lead_genotype)
+
+new_lead = int(np.argmin(pvalues_conditional))
+print(f"After conditioning on variant {lead_variant}: new lead = {new_lead} "
       f"(near the other causal {causalB.tolist()})")
 # A single-causal model puts all PIP near one signal; SuSiE fits several single-effect components
 # iteratively (much like conditioning) to give one credible set per causal variant.
