@@ -224,7 +224,7 @@ y_poly_g = y_poly_g / (y_poly_g.std() + 1e-8) * np.sqrt(0.02)
 y_poly = (y_poly_g + np.random.normal(0, np.sqrt(0.98), N))
 y_poly = (y_poly - y_poly.mean()) / y_poly.std()
 
-dom_idx_qc = -1; rec_idx_qc = -1   # non-additive loci not available in fallback
+dom_idx_qc = -1; rec_idx_qc = -1; sexspec_idx_qc = -1   # special loci not available in fallback
 print("Fallback dataset ready (block-LD simulation, spike-and-slab phenotype)")
 """
 
@@ -257,6 +257,7 @@ if os.path.exists(os.path.join(DATA_DIR, 'gwas_data.npz')):
     true_betas = d['true_betas']             # true causal effect sizes
     dom_idx_qc = int(d['dom_idx_qc'][0])     # post-QC column index of dominant locus
     rec_idx_qc = int(d['rec_idx_qc'][0])     # post-QC column index of recessive locus
+    sexspec_idx_qc = int(d['sexspec_idx_qc'][0]) if 'sexspec_idx_qc' in d.files else -1  # sex-specific locus
     fly_df     = pd.read_csv(os.path.join(DATA_DIR, 'fly_data.csv'))
     N, M_raw = G_raw.shape
     CHROM = 1
@@ -305,6 +306,7 @@ y_bin      = d['y_bin']                  # binary phenotype (0/1, ~10% cases)
 true_betas = d['true_betas']             # true causal effect sizes
 dom_idx_qc = int(d['dom_idx_qc'][0])     # post-QC column index of dominant locus
 rec_idx_qc = int(d['rec_idx_qc'][0])     # post-QC column index of recessive locus
+sexspec_idx_qc = int(d['sexspec_idx_qc'][0]) if 'sexspec_idx_qc' in d.files else -1  # sex-specific locus
 fly_df     = pd.read_csv(os.path.join(DATA_DIR, 'fly_data.csv'))
 N, M_raw = G_raw.shape
 CHROM = 1
@@ -1201,36 +1203,56 @@ print(pd.DataFrame(recomb_freq, index=x_linked_traits, columns=x_linked_traits).
 """
 
 S1_CQ2D_STUDENT = """\
-# Challenge 4, Part C: Infer gene order
-# The pair with the SMALLEST recombination frequency are the CLOSEST together.
-# Iteratively build up the genetic map by placing genes relative to each other.
-#
-# Hint: Start with the two most closely linked genes, then find which other gene
-# is closest to one end or the other.
-
-# YOUR CODE HERE
-# 1. Find the gene pair with the smallest recombination frequency
-# 2. Build up the map order step by step
-# 3. Convert recombination frequencies to genetic distances (Haldane map function)
-#    d = -50 * log(1 - 2r) cM    [Haldane]
+# Challenge 4, Part C: Infer gene order and build the genetic map
+# Provided: the Haldane map function (recombination frequency → cM) so you don't have to
+# remember it, and the ground-truth positions so you can check your answer.
 
 def haldane_d(r):
-    \"\"\"Convert recombination frequency r to map distance in cM.\"\"\"
-    return ???
+    \"\"\"Recombination frequency r → map distance in cM (Haldane).\"\"\"
+    return -50 * np.log(1 - 2*np.clip(r, 0, 0.499))
 
-# Print your inferred gene order and map distances
+D = haldane_d(recomb_freq)            # pairwise genetic distances (cM)
+np.fill_diagonal(D, 0.0)              # distance from a gene to itself is 0
+
+# HINT: on a *linear* chromosome the two genes that are FARTHEST apart are the two ENDS.
+# np.unravel_index converts a flattened argmax index back to (row, col):
+i_end, j_end = np.unravel_index(np.argmax(D), D.shape)
+
+# YOUR CODE HERE
+# Order all genes by their distance from one end (i_end), then read off the map.
+order          = ???                 # np.argsort(D[i_end])
+ordered_traits = ???                 # x_linked_traits in that order
+ordered_pos    = ???                 # their distance from i_end (cM)
+
+print("Inferred gene order (cM from one end):")
+for t, p in zip(ordered_traits, ordered_pos):
+    print(f"  {t:14s} {p:5.1f} cM")
+
+# Ground truth — check your inferred order/spacing against this (up to a left-right flip):
+TRUE_POS = {'trait_eye': 0, 'trait_wing': 5, 'trait_leg': 15,
+            'trait_notch': 30, 'trait_vein': 35, 'trait_scute': 50}
+print("\\nGround truth (cM):", TRUE_POS)
 """
 
 S1_CQ2D_SOL = """\
 def haldane_d(r):
     return -50 * np.log(1 - 2*np.clip(r, 0, 0.499))
 
-rf_df = pd.DataFrame(recomb_freq, index=x_linked_traits, columns=x_linked_traits)
-# Find closest pair
-np.fill_diagonal(recomb_freq, 1.0)
-i_min, j_min = np.unravel_index(recomb_freq.argmin(), recomb_freq.shape)
-print(f"Closest pair: {x_linked_traits[i_min]} — {x_linked_traits[j_min]}: "
-      f"r={recomb_freq[i_min,j_min]:.3f}, d={haldane_d(recomb_freq[i_min,j_min]):.1f} cM")
+D = haldane_d(recomb_freq)
+np.fill_diagonal(D, 0.0)
+i_end, j_end = np.unravel_index(np.argmax(D), D.shape)   # the two farthest-apart genes = ends
+
+order          = np.argsort(D[i_end])
+ordered_traits = [x_linked_traits[k] for k in order]
+ordered_pos    = D[i_end][order]
+
+print("Inferred gene order (cM from one end):")
+for t, p in zip(ordered_traits, ordered_pos):
+    print(f"  {t:14s} {p:5.1f} cM")
+
+TRUE_POS = {'trait_eye': 0, 'trait_wing': 5, 'trait_leg': 15,
+            'trait_notch': 30, 'trait_vein': 35, 'trait_scute': 50}
+print("\\nGround truth (cM):", TRUE_POS)
 """
 
 # ── Challenge 5: Ascertainment by age of onset ───────────────────────────────
@@ -1303,9 +1325,84 @@ plt.tight_layout(); plt.show()
 # Dropping young cases ~halves the case count → less power → points fall below y=x.
 """
 
-# ── Challenge 6: Polygenic scores (PGS) ──────────────────────────────────────
+# ── Challenge 6: Sex-stratified GWAS ─────────────────────────────────────────
+S1_CQSEX_MD = """\
+### Challenge 6: Sex-stratified GWAS (Medium)
+
+Effects can differ between the sexes. The standard pooled GWAS estimates a single effect per
+variant — so a variant that acts in *opposite* directions in males and females averages out to
+look null. Run the continuous-trait GWAS **separately in males and females** and compare the
+per-variant effect sizes. Is there a variant that the pooled GWAS misses?
+"""
+
+S1_CQSEX_STUDENT = """\
+# Challenge 6: GWAS separately in males and females
+male = sex == 1
+female = sex == 0
+
+# Within a single sex, sex is constant — adjust for age only.
+cov_m = ((age[male]   - age.mean()) / age.std()).reshape(-1, 1)
+cov_f = ((age[female] - age.mean()) / age.std()).reshape(-1, 1)
+
+# YOUR CODE HERE: run the GWAS in each sex
+betas_m, _, pvals_m = run_gwas(???, ???, ???)
+betas_f, _, pvals_f = run_gwas(???, ???, ???)
+
+# Compare effect sizes at variants significant in either stratum
+sel = np.where((pvals_m < 1e-5) | (pvals_f < 1e-5))[0]
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+ax.scatter(betas_m[sel], betas_f[sel], s=25, alpha=0.6, color='steelblue', label='sig in either')
+if sexspec_idx_qc >= 0:
+    ax.scatter(betas_m[sexspec_idx_qc], betas_f[sexspec_idx_qc], s=160, marker='*',
+               color='red', zorder=5, label='sex-specific locus')
+lim = np.abs(np.r_[betas_m[sel], betas_f[sel]]).max() * 1.15
+ax.plot([-lim, lim], [-lim, lim], 'k--', label='y = x'); ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+ax.axhline(0, color='grey', lw=0.5); ax.axvline(0, color='grey', lw=0.5)
+ax.set_xlabel('Effect in males'); ax.set_ylabel('Effect in females')
+ax.set_title('Sex-stratified effect sizes'); ax.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+
+if sexspec_idx_qc >= 0:
+    print(f"Sex-specific locus {rsids_qc[sexspec_idx_qc]}:")
+    print(f"  pooled   p = {pvals_cov[sexspec_idx_qc]:.1e}  (looks null)")
+    print(f"  males    beta={betas_m[sexspec_idx_qc]:+.3f}  p={pvals_m[sexspec_idx_qc]:.1e}")
+    print(f"  females  beta={betas_f[sexspec_idx_qc]:+.3f}  p={pvals_f[sexspec_idx_qc]:.1e}")
+print("Q: Which variant lies off the y=x line, and why does the pooled GWAS miss it?")
+"""
+
+S1_CQSEX_SOL = """\
+male = sex == 1
+female = sex == 0
+cov_m = ((age[male]   - age.mean()) / age.std()).reshape(-1, 1)
+cov_f = ((age[female] - age.mean()) / age.std()).reshape(-1, 1)
+
+betas_m, _, pvals_m = run_gwas(y_cont[male],   G_qc[male],   cov_m)
+betas_f, _, pvals_f = run_gwas(y_cont[female], G_qc[female], cov_f)
+
+sel = np.where((pvals_m < 1e-5) | (pvals_f < 1e-5))[0]
+fig, ax = plt.subplots(figsize=(5.5, 5.5))
+ax.scatter(betas_m[sel], betas_f[sel], s=25, alpha=0.6, color='steelblue', label='sig in either')
+if sexspec_idx_qc >= 0:
+    ax.scatter(betas_m[sexspec_idx_qc], betas_f[sexspec_idx_qc], s=160, marker='*',
+               color='red', zorder=5, label='sex-specific locus')
+lim = np.abs(np.r_[betas_m[sel], betas_f[sel]]).max() * 1.15
+ax.plot([-lim, lim], [-lim, lim], 'k--', label='y = x'); ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
+ax.axhline(0, color='grey', lw=0.5); ax.axvline(0, color='grey', lw=0.5)
+ax.set_xlabel('Effect in males'); ax.set_ylabel('Effect in females')
+ax.set_title('Sex-stratified effect sizes'); ax.legend(fontsize=8)
+plt.tight_layout(); plt.show()
+
+if sexspec_idx_qc >= 0:
+    print(f"Sex-specific locus {rsids_qc[sexspec_idx_qc]}:")
+    print(f"  pooled   p = {pvals_cov[sexspec_idx_qc]:.1e}  (looks null)")
+    print(f"  males    beta={betas_m[sexspec_idx_qc]:+.3f}  p={pvals_m[sexspec_idx_qc]:.1e}")
+    print(f"  females  beta={betas_f[sexspec_idx_qc]:+.3f}  p={pvals_f[sexspec_idx_qc]:.1e}")
+# The sex-specific locus sits off the y=x line (opposite-sign effects); pooled it averages ~0.
+"""
+
+# ── Challenge 7: Polygenic scores (PGS) ──────────────────────────────────────
 S1_CQ5_MD = """\
-### Challenge 6: Polygenic scores — predicting the genetic component (Hard)
+### Challenge 7: Polygenic scores — predicting the genetic component (Hard)
 
 A **polygenic score** is the predicted genetic value $\\hat g_i = \\sum_j x_{ij}\\,\\hat\\beta_j$,
 built from GWAS effect estimates. To judge prediction honestly we fit the effects in a
@@ -1320,7 +1417,7 @@ or Bayesian shrinkage of the effects.)
 """
 
 S1_CQ5_STUDENT = """\
-# Challenge 6: Polygenic scores (train/test split)
+# Challenge 7: Polygenic scores (train/test split)
 import seaborn as sns
 rng = np.random.default_rng(7)
 perm = rng.permutation(N); tr, te = perm[:N//2], perm[N//2:]   # train / test halves
@@ -2282,6 +2379,8 @@ def build_session1(answers=False, run=False, nb_path=None):
         *ex(S1_CQ2D_STUDENT, S1_CQ2D_SOL),
         md(S1_CQ4_MD),
         *ex(S1_CQ4_STUDENT, S1_CQ4_SOL),
+        md(S1_CQSEX_MD),
+        *ex(S1_CQSEX_STUDENT, S1_CQSEX_SOL),
         md(S1_CQ5_MD),
         *ex(S1_CQ5_STUDENT, S1_CQ5_SOL),
     ]

@@ -187,36 +187,18 @@ def simulate_phenotypes(G_qc, true_betas, seed=SEED):
     """
     Simulate continuous and binary phenotypes from QC-passed genotypes.
 
-    Continuous: liability model, h²≈0.25 (genetic) + covariate effects + noise.
-    Two extra non-additive effects are injected at fixed loci to produce one
-    clearly dominant and one clearly recessive variant for the Challenge exercise.
+    Continuous: liability model, h²≈0.025 (genetic) + covariate effects + noise.
+    Non-additive effects are injected at fixed loci (one dominant, one recessive),
+    and one causal variant carries a sex-specific effect (sign-flipped between
+    sexes) for the sex-stratified GWAS challenge.
     Binary: liability threshold at the 90th percentile (~10% cases).
 
-    Returns y_cont, y_bin, age, sex, dom_idx, rec_idx.
+    Returns y_cont, y_poly, y_bin, age, sex, dom_idx, rec_idx, sexspec_idx.
     """
     rng = np.random.default_rng(seed)
     N, M = G_qc.shape
 
-    G_std = (G_qc - G_qc.mean(0)) / (G_qc.std(0) + 1e-8)
-    genetic = G_std @ true_betas
-    if genetic.std() > 0:
-        genetic = genetic / genetic.std() * np.sqrt(0.025)  # h²≈0.025, 3 causal variants
-
-    # Inject one dominant and one recessive locus using moderately frequent variants
-    # dominant: effect present for any copy (AB = BB); recessive: only BB
-    af_qc = G_qc.mean(0) / 2   # approximate AF (0-imputed, slightly deflated)
-    lo = np.percentile(af_qc, 70)   # use upper 30% by AF — enough BB homozygotes
-    hi = np.percentile(af_qc, 95)   # avoid top 5% (very high AF, little BB contrast)
-    common_idx = np.where((af_qc >= lo) & (af_qc <= hi))[0]
-    rng2 = np.random.default_rng(seed + 1)
-    chosen = rng2.choice(common_idx, 2, replace=False)
-    dom_idx, rec_idx = int(chosen[0]), int(chosen[1])
-
-    dom_effect = np.where(G_qc[:, dom_idx] >= 1, 1.0, 0.0)   # dominant
-    rec_effect = np.where(G_qc[:, rec_idx] == 2, 1.0, 0.0)   # recessive
-    dom_effect = (dom_effect - dom_effect.mean()) / (dom_effect.std() + 1e-8) * np.sqrt(0.005)
-    rec_effect = (rec_effect - rec_effect.mean()) / (rec_effect.std() + 1e-8) * np.sqrt(0.005)
-
+    # Covariates first (sex is needed for the sex-specific genetic effect below).
     # Age: UKB age-at-recruitment distribution (Instance 0; range 37–73, median 58,
     # mean ≈ 56.5, sd ≈ 8.1). Quantile interpolation through the observed decile values.
     _p   = [0, .10, .20, .30, .40, .50, .60, .70, .80, .90, 1.0]
@@ -224,9 +206,37 @@ def simulate_phenotypes(G_qc, true_betas, seed=SEED):
     age  = np.interp(rng.uniform(0, 1, N), _p, _age)
     sex = rng.binomial(1, 0.5, N).astype(np.int8)
 
-    noise_var = max(1 - 0.025 - 0.005 - 0.005, 0.01)  # h²=0.025 + dom(0.005) + rec(0.005)
+    G_std = (G_qc - G_qc.mean(0)) / (G_qc.std(0) + 1e-8)
+    genetic = G_std @ true_betas
+    if genetic.std() > 0:
+        genetic = genetic / genetic.std() * np.sqrt(0.025)  # h²≈0.025, 3 causal variants
+
+    # Inject dominant, recessive and sex-specific loci at moderately frequent variants.
+    # dominant: effect present for any copy (AB = BB); recessive: only BB
+    af_qc = G_qc.mean(0) / 2   # approximate AF (0-imputed, slightly deflated)
+    lo = np.percentile(af_qc, 70)   # use upper 30% by AF — enough BB homozygotes
+    hi = np.percentile(af_qc, 95)   # avoid top 5% (very high AF, little BB contrast)
+    common_idx = np.where((af_qc >= lo) & (af_qc <= hi))[0]
+    rng2 = np.random.default_rng(seed + 1)
+    chosen = rng2.choice(common_idx, 3, replace=False)
+    dom_idx, rec_idx, sexspec_idx = int(chosen[0]), int(chosen[1]), int(chosen[2])
+
+    dom_effect = np.where(G_qc[:, dom_idx] >= 1, 1.0, 0.0)   # dominant
+    rec_effect = np.where(G_qc[:, rec_idx] == 2, 1.0, 0.0)   # recessive
+    dom_effect = (dom_effect - dom_effect.mean()) / (dom_effect.std() + 1e-8) * np.sqrt(0.005)
+    rec_effect = (rec_effect - rec_effect.mean()) / (rec_effect.std() + 1e-8) * np.sqrt(0.005)
+
+    # Sex-specific effect: a moderate-frequency variant whose per-allele effect is SIGN-FLIPPED
+    # between sexes (+ in males, − in females). A pooled GWAS averages the two ≈ to zero (looks
+    # null); a sex-stratified GWAS recovers strong opposite-sign effects. Variance 0.01 → per-sex
+    # R²≈0.01, easily genome-wide significant at N≈5,000 per stratum.
+    sex_sign = np.where(sex == 1, 1.0, -1.0)
+    sexspec_effect = G_std[:, sexspec_idx] * sex_sign
+    sexspec_effect = sexspec_effect / (sexspec_effect.std() + 1e-8) * np.sqrt(0.01)
+
+    noise_var = max(1 - 0.025 - 0.005 - 0.005 - 0.01, 0.01)  # genetic + dom + rec + sexspec
     y_cont = (genetic
-              + dom_effect + rec_effect
+              + dom_effect + rec_effect + sexspec_effect
               + 0.15 * (sex - 0.5)
               + 0.10 * (age - 57) / 8
               + rng.normal(0, np.sqrt(noise_var), N))
@@ -258,7 +268,10 @@ def simulate_phenotypes(G_qc, true_betas, seed=SEED):
           f"({100*y_bin.mean():.1f}%, liability threshold)")
     print(f"  Non-additive loci: dominant at G_qc col {dom_idx}, "
           f"recessive at G_qc col {rec_idx}")
-    return y_cont, y_poly, y_bin, age, sex, dom_idx, rec_idx
+    print(f"  Sex-specific locus: G_qc col {sexspec_idx} "
+          f"(MAF {min(af_qc[sexspec_idx], 1-af_qc[sexspec_idx]):.2f}, "
+          f"effect sign-flipped between sexes)")
+    return y_cont, y_poly, y_bin, age, sex, dom_idx, rec_idx, sexspec_idx
 
 
 # ─── Drosophila cross dataset ─────────────────────────────────────────────────
@@ -364,8 +377,8 @@ def main():
     G_qc = np.where(np.isnan(G_raw[:, qc_pass]), 0, G_raw[:, qc_pass])
     true_betas_raw = make_spike_slab_betas(maf_raw, p_causal=3/M_RAW, seed=SEED)
     true_betas_qc  = true_betas_raw[qc_pass]
-    y_cont, y_poly, y_bin, age, sex, dom_idx_qc, rec_idx_qc = simulate_phenotypes(
-        G_qc, true_betas_qc, seed=SEED)
+    y_cont, y_poly, y_bin, age, sex, dom_idx_qc, rec_idx_qc, sexspec_idx_qc = \
+        simulate_phenotypes(G_qc, true_betas_qc, seed=SEED)
 
     # ── 4. Save ──────────────────────────────────────────────────────────────
     print(f"\n[4/4] Saving")
@@ -389,6 +402,7 @@ def main():
         true_betas  = true_betas_raw,
         dom_idx_qc  = np.array([dom_idx_qc]),   # post-QC index of dominant locus
         rec_idx_qc  = np.array([rec_idx_qc]),   # post-QC index of recessive locus
+        sexspec_idx_qc = np.array([sexspec_idx_qc]),  # post-QC index of sex-specific locus
     )
     print(f"  Saved: {out_path}  ({out_path.stat().st_size // 1e6:.0f} MB)")
 
