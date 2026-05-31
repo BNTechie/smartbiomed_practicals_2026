@@ -2242,15 +2242,14 @@ common-variant GWAS** for BMI points **up**, and **Genebass whole-exome single-v
 BMI point **down**. The common-variant GWAS tags broad regulatory regions; the exome scan pinpoints
 **coding** variants in genes.
 
-We zoom into a single chromosome (default **chr16**, home of the *FTO* common-variant peak). Here the
-Pan-UKB GWAS has been **lifted from GRCh37 to GRCh38** (see `fetch_gene_models.py`), so it shares **one
-coordinate system** with the Genebass exome data and with a **gene / coding-exon track** drawn beneath
-the plot. Across chr16 the **exome** hits sit **on coding exons** (that is all the exome assay can see),
-whereas the **common-variant** GWAS tags broad regulatory regions. Zooming into *FTO* shows the classic
-picture: the GWAS peak sits in *FTO*'s **first intron** with **no coding exon beneath it** — and there
-are **no exome/coding hits inside *FTO* at all** (the signal is regulatory, acting at a distance on
-*IRX3/IRX5*). After plotting, compare the **effect sizes of significant exome variants by consequence**
-(synonymous / missense / pLoF).
+The Pan-UKB GWAS has been **lifted from GRCh37 to GRCh38** (see `fetch_gene_models.py`), so it shares
+**one coordinate system** with the Genebass exome data and with a **gene / coding-exon track** drawn
+beneath the plot. We then **zoom into the _ADCY9_ locus** (chr16p13.3, ~3.9–4.2 Mb), a BMI-associated
+region covered by **both** assays, and draw the gene models — *CREBBP*, *ADCY9*, *SRL* — each on its own
+lane underneath. The contrast to look for: the **exome (coding) variants sit squarely on coding exons**
+(boxes in the track) — that is all an exome assay can see — while the **common-variant GWAS variants are
+scattered indiscriminately** across the whole locus, mostly in introns. After plotting, compare the
+**effect sizes of significant exome variants by consequence** (synonymous / missense / pLoF).
 """
 
 S2_MIAMI_STUDENT = """\
@@ -2285,45 +2284,53 @@ ax.set_ylabel(r'$-\\log_{10}(p)$   (GWAS up / exome down)')
 ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM} (GRCh38): common-variant GWAS vs exome')
 ax.legend(fontsize=8, loc='upper right'); plt.tight_layout(); plt.show()
 
-# Provided: zoom into FTO and draw a gene / coding-exon track underneath. Because everything is now
-# on GRCh38, we can read off WHICH variants fall in coding sequence.
+# Provided: zoom into the ADCY9 locus and draw a gene track underneath, one lane per gene. Because
+# everything is now on GRCh38, the variants line up exactly with the coding exons (CDS boxes).
 def gene_track(ax_track, x0_mb, x1_mb):
-    \"\"\"chr16 genes in [x0_mb, x1_mb]: thin line = gene body, thick black = coding exon (CDS).\"\"\"
+    \"\"\"Draw chr16 genes overlapping [x0_mb, x1_mb], each on its own lane:
+    thin grey line = gene body (mostly introns); black boxes = coding exons (CDS).\"\"\"
     names = genemodels['gene_name']
-    for gi in range(len(names)):
+    vis = [gi for gi in range(len(names))
+           if genemodels['gene_end'][gi] / 1e6 >= x0_mb and genemodels['gene_start'][gi] / 1e6 <= x1_mb]
+    vis.sort(key=lambda gi: genemodels['gene_start'][gi])           # left-to-right, one lane each
+    for lane, gi in enumerate(vis):
         gs, ge = genemodels['gene_start'][gi] / 1e6, genemodels['gene_end'][gi] / 1e6
-        if ge < x0_mb or gs > x1_mb:
-            continue
-        ax_track.plot([max(gs, x0_mb), min(ge, x1_mb)], [0, 0], color='grey', lw=1, zorder=1)
-        if x0_mb <= (gs + ge) / 2 <= x1_mb:
-            ax_track.annotate(names[gi], ((gs + ge) / 2, 0), xytext=(0, 7),
-                              textcoords='offset points', ha='center', fontsize=7, color='darkred')
-    for s, e in zip(genemodels['cds_start'], genemodels['cds_end']):
-        if e / 1e6 < x0_mb or s / 1e6 > x1_mb:
-            continue
-        ax_track.plot([s / 1e6, e / 1e6], [0, 0], color='black', lw=7, solid_capstyle='butt', zorder=2)
-    ax_track.set_yticks([]); ax_track.set_ylim(-0.6, 1.0); ax_track.set_xlim(x0_mb, x1_mb)
+        strand = genemodels['gene_strand'][gi]
+        ax_track.plot([max(gs, x0_mb), min(ge, x1_mb)], [lane, lane],   # gene body
+                      color='grey', lw=1.2, zorder=1)
+        for g2, s, e in zip(genemodels['cds_gi'], genemodels['cds_start'], genemodels['cds_end']):
+            if g2 == gi:                                              # this gene's coding exons
+                ax_track.plot([s / 1e6, e / 1e6], [lane, lane], color='black',
+                              lw=7, solid_capstyle='butt', zorder=2)
+        mid = (max(gs, x0_mb) + min(ge, x1_mb)) / 2
+        ax_track.text(mid, lane + 0.34, f"{names[gi]} ({strand})", ha='center', va='bottom',
+                      fontsize=7.5, color='darkred')
+    ax_track.set_yticks([]); ax_track.set_ylim(-0.6, max(len(vis) - 1, 0) + 0.7)
+    ax_track.set_xlim(x0_mb, x1_mb)
 
-_fto = list(genemodels['gene_name']).index('FTO')          # FTO gene window (GRCh38), padded
-fto_s, fto_e = genemodels['gene_start'][_fto] / 1e6, genemodels['gene_end'][_fto] / 1e6
-pad = 0.15 * (fto_e - fto_s); ZOOM = (fto_s - pad, fto_e + pad)
+_adcy9 = list(genemodels['gene_name']).index('ADCY9')      # ADCY9 locus window (GRCh38), padded
+a_s, a_e = genemodels['gene_start'][_adcy9] / 1e6, genemodels['gene_end'][_adcy9] / 1e6
+pad = 0.5 * (a_e - a_s); ZOOM = (a_s - pad, a_e + pad)      # widen to include CREBBP and SRL
 
 fig, (axz, axg) = plt.subplots(2, 1, figsize=(11, 6), sharex=True,
-                               gridspec_kw={'height_ratios': [4, 1]})
+                               gridspec_kw={'height_ratios': [3, 1.4]})
 zg = (gwas_pos_mb >= ZOOM[0]) & (gwas_pos_mb <= ZOOM[1])
 ze = (exome_pos_mb >= ZOOM[0]) & (exome_pos_mb <= ZOOM[1])
 axz.scatter(gwas_pos_mb[zg], gwas_nlog10p[zg], s=14, alpha=0.6, color='steelblue', label='GWAS (common)')
-axz.scatter(exome_pos_mb[ze], -exome_nlog10p[ze], s=24, alpha=0.8, color='#e15759', label='exome (coding)')
+axz.scatter(exome_pos_mb[ze], -exome_nlog10p[ze], s=28, alpha=0.85, color='#e15759', label='exome (coding)')
+for x in exome_pos_mb[ze]:                                  # guide lines: exome variant -> exon below
+    axz.axvline(x, color='#e15759', lw=0.6, alpha=0.3, zorder=0)
+    axg.axvline(x, color='#e15759', lw=0.6, alpha=0.3, zorder=0)
 axz.axhline(0, color='black', lw=0.8); axz.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)
 axz.set_yticklabels([f'{abs(t):.0f}' for t in axz.get_yticks()])
 axz.set_ylabel(r'$-\\log_{10}(p)$'); axz.legend(fontsize=8, loc='upper right')
-axz.set_title('Zoom on FTO (chr16, GRCh38): GWAS up / exome down')
+axz.set_title('Zoom on the ADCY9 locus (chr16, GRCh38): GWAS up / exome down')
 gene_track(axg, *ZOOM)
-axg.set_xlabel('Position on chr16 (Mb, GRCh38)'); axg.set_ylabel('genes\\n(CDS thick)', fontsize=8)
+axg.set_xlabel('Position on chr16 (Mb, GRCh38)'); axg.set_ylabel('genes\\n(CDS = boxes)', fontsize=8)
 plt.tight_layout(); plt.show()
-print("Q: The GWAS peak sits over FTO intron 1 (no coding exon beneath it), and there are no")
-print("   exome/coding hits inside FTO at all. What does this regulatory (non-coding) common-variant")
-print("   signal say about how common variants act, vs the coding variants the exome scan can see?")
+print("Q: The red exome variants line up with coding exons (boxes), while the blue GWAS variants are")
+print("   scattered across the whole locus, mostly in introns. Why does the exome scan only see coding")
+print("   variants, and what does the GWAS spread tell you about how common variants are discovered?")
 """
 
 S2_MIAMI_SOL = """\
@@ -2349,41 +2356,48 @@ ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM} (GRCh38): common-variant GWAS vs
 ax.legend(fontsize=8, loc='upper right'); plt.tight_layout(); plt.show()
 
 def gene_track(ax_track, x0_mb, x1_mb):
-    \"\"\"chr16 genes in [x0_mb, x1_mb]: thin line = gene body, thick black = coding exon (CDS).\"\"\"
+    \"\"\"Draw chr16 genes overlapping [x0_mb, x1_mb], each on its own lane:
+    thin grey line = gene body (mostly introns); black boxes = coding exons (CDS).\"\"\"
     names = genemodels['gene_name']
-    for gi in range(len(names)):
+    vis = [gi for gi in range(len(names))
+           if genemodels['gene_end'][gi] / 1e6 >= x0_mb and genemodels['gene_start'][gi] / 1e6 <= x1_mb]
+    vis.sort(key=lambda gi: genemodels['gene_start'][gi])
+    for lane, gi in enumerate(vis):
         gs, ge = genemodels['gene_start'][gi] / 1e6, genemodels['gene_end'][gi] / 1e6
-        if ge < x0_mb or gs > x1_mb:
-            continue
-        ax_track.plot([max(gs, x0_mb), min(ge, x1_mb)], [0, 0], color='grey', lw=1, zorder=1)
-        if x0_mb <= (gs + ge) / 2 <= x1_mb:
-            ax_track.annotate(names[gi], ((gs + ge) / 2, 0), xytext=(0, 7),
-                              textcoords='offset points', ha='center', fontsize=7, color='darkred')
-    for s, e in zip(genemodels['cds_start'], genemodels['cds_end']):
-        if e / 1e6 < x0_mb or s / 1e6 > x1_mb:
-            continue
-        ax_track.plot([s / 1e6, e / 1e6], [0, 0], color='black', lw=7, solid_capstyle='butt', zorder=2)
-    ax_track.set_yticks([]); ax_track.set_ylim(-0.6, 1.0); ax_track.set_xlim(x0_mb, x1_mb)
+        strand = genemodels['gene_strand'][gi]
+        ax_track.plot([max(gs, x0_mb), min(ge, x1_mb)], [lane, lane], color='grey', lw=1.2, zorder=1)
+        for g2, s, e in zip(genemodels['cds_gi'], genemodels['cds_start'], genemodels['cds_end']):
+            if g2 == gi:
+                ax_track.plot([s / 1e6, e / 1e6], [lane, lane], color='black',
+                              lw=7, solid_capstyle='butt', zorder=2)
+        mid = (max(gs, x0_mb) + min(ge, x1_mb)) / 2
+        ax_track.text(mid, lane + 0.34, f"{names[gi]} ({strand})", ha='center', va='bottom',
+                      fontsize=7.5, color='darkred')
+    ax_track.set_yticks([]); ax_track.set_ylim(-0.6, max(len(vis) - 1, 0) + 0.7)
+    ax_track.set_xlim(x0_mb, x1_mb)
 
-_fto = list(genemodels['gene_name']).index('FTO')
-fto_s, fto_e = genemodels['gene_start'][_fto] / 1e6, genemodels['gene_end'][_fto] / 1e6
-pad = 0.15 * (fto_e - fto_s); ZOOM = (fto_s - pad, fto_e + pad)
+_adcy9 = list(genemodels['gene_name']).index('ADCY9')
+a_s, a_e = genemodels['gene_start'][_adcy9] / 1e6, genemodels['gene_end'][_adcy9] / 1e6
+pad = 0.5 * (a_e - a_s); ZOOM = (a_s - pad, a_e + pad)
 
 fig, (axz, axg) = plt.subplots(2, 1, figsize=(11, 6), sharex=True,
-                               gridspec_kw={'height_ratios': [4, 1]})
+                               gridspec_kw={'height_ratios': [3, 1.4]})
 zg = (gwas_pos_mb >= ZOOM[0]) & (gwas_pos_mb <= ZOOM[1])
 ze = (exome_pos_mb >= ZOOM[0]) & (exome_pos_mb <= ZOOM[1])
 axz.scatter(gwas_pos_mb[zg], gwas_nlog10p[zg], s=14, alpha=0.6, color='steelblue', label='GWAS (common)')
-axz.scatter(exome_pos_mb[ze], -exome_nlog10p[ze], s=24, alpha=0.8, color='#e15759', label='exome (coding)')
+axz.scatter(exome_pos_mb[ze], -exome_nlog10p[ze], s=28, alpha=0.85, color='#e15759', label='exome (coding)')
+for x in exome_pos_mb[ze]:
+    axz.axvline(x, color='#e15759', lw=0.6, alpha=0.3, zorder=0)
+    axg.axvline(x, color='#e15759', lw=0.6, alpha=0.3, zorder=0)
 axz.axhline(0, color='black', lw=0.8); axz.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)
 axz.set_yticklabels([f'{abs(t):.0f}' for t in axz.get_yticks()])
 axz.set_ylabel(r'$-\\log_{10}(p)$'); axz.legend(fontsize=8, loc='upper right')
-axz.set_title('Zoom on FTO (chr16, GRCh38): GWAS up / exome down')
+axz.set_title('Zoom on the ADCY9 locus (chr16, GRCh38): GWAS up / exome down')
 gene_track(axg, *ZOOM)
-axg.set_xlabel('Position on chr16 (Mb, GRCh38)'); axg.set_ylabel('genes\\n(CDS thick)', fontsize=8)
+axg.set_xlabel('Position on chr16 (Mb, GRCh38)'); axg.set_ylabel('genes\\n(CDS = boxes)', fontsize=8)
 plt.tight_layout(); plt.show()
-# FTO intron-1 GWAS peak is regulatory (acts on IRX3/IRX5) with NO coding hits in FTO itself; the
-# exome's coding hits sit elsewhere on chr16. Common signals tag regulatory DNA; exomes see only CDS.
+# The exome variants sit ON coding exons (that is all exome sequencing assays); the common-variant
+# GWAS variants are scattered across the locus, mostly intronic, tagging the signal via LD.
 """
 
 S2_CSQ_STUDENT = """\

@@ -12,8 +12,9 @@ Bundles, for chromosome 16 (GRCh38):
 Output: data/gene_models_chr16.npz
 
 This lets the notebook (a) draw a coding-exon track across chr16 and quantify the fraction of GWAS
-vs exome variants that fall in coding sequence, and (b) zoom into FTO (GWAS peak in intron 1, no
-coding hits) and 16p11.2 (exome coding hits sitting on exons), all on one coordinate system.
+vs exome variants that fall in coding sequence, and (b) zoom into the ADCY9 locus (chr16p13.3, with
+CREBBP and SRL alongside) where exome coding variants sit on exons while the common-variant GWAS is
+scattered across introns — all on one coordinate system.
 
 No runtime API calls in the notebook. DEPENDENCIES (instructor only): numpy, pyliftover (+ curl, gzip).
 """
@@ -120,9 +121,9 @@ def main():
         gw_pos37=gw_pos37.astype(np.int64), gw_pos38=gw_pos38.astype(np.int64),
         gw_nlog10p=gw_nlp.astype(np.float32),
     )
-    fto = names.index("FTO")
-    print(f"  FTO (MANE, GRCh38): {gene_start[fto]:,}-{gene_end[fto]:,}  "
-          f"({(np.array(ex_gi) == fto).sum()} exons)")
+    adcy9 = names.index("ADCY9")
+    print(f"  ADCY9 (MANE, GRCh38): {gene_start[adcy9]:,}-{gene_end[adcy9]:,}  "
+          f"({(np.array(cds_gi) == adcy9).sum()} coding exons)")
     print(f"  total exons={len(ex_gi):,}  CDS={len(cds_gi):,}")
     print(f"  Saved: {out}  ({out.stat().st_size/1e6:.2f} MB)")
 
