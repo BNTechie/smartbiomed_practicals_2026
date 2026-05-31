@@ -1518,6 +1518,20 @@ genebass['nlog10p'] = -np.log10(genebass['pval'].clip(lower=1e-300))
 print(f"Genebass BMI exome variants: {len(genebass):,}  "
       f"({genebass['CSQ'].nunique()} consequence types)")
 
+# ── Load chr16 gene models + GRCh37->GRCh38-lifted BMI GWAS (for the gene-track challenge) ──
+# MANE Select gene/exon/CDS models on chr16 (GRCh38) plus the Pan-UKB BMI GWAS chr16 variants
+# lifted to GRCh38 — so the common-variant GWAS, the Genebass exome variants and the gene models
+# all share ONE coordinate system (no per-plot fudging). Built by fetch_gene_models.py.
+_gm_path = os.path.join(DATA_DIR, 'gene_models_chr16.npz')
+if not os.path.exists(_gm_path):
+    _gmurl = f'https://media.githubusercontent.com/media/{REPO_SLUG}/{BRANCH_NAME}/data/gene_models_chr16.npz'
+    print('Downloading gene_models_chr16.npz from GitHub ...')
+    import urllib.request; urllib.request.urlretrieve(_gmurl, _gm_path)
+genemodels = dict(np.load(_gm_path, allow_pickle=True))
+print(f"chr16 gene models: {len(genemodels['gene_name']):,} MANE genes, "
+      f"{len(genemodels['cds_gi']):,} coding exons; "
+      f"{len(genemodels['gw_pos38']):,} GWAS variants lifted to GRCh38")
+
 def _thin(n, k=12000, seed=0):
     \"\"\"Index subset of size <=k for plotting only (keeps figures/notebooks small).\"\"\"
     return (np.arange(n) if n <= k
@@ -2228,22 +2242,27 @@ common-variant GWAS** for BMI points **up**, and **Genebass whole-exome single-v
 BMI point **down**. The common-variant GWAS tags broad regulatory regions; the exome scan pinpoints
 **coding** variants in genes.
 
-We zoom into a single chromosome (default **chr16**, home of the *FTO* common-variant peak and *SH2B1*
-coding hits). **Important caveat:** the Pan-UKB GWAS is in **GRCh37** coordinates while Genebass is in
-**GRCh38** — we do **not** lift over, so peaks only line up approximately. After plotting, compare the
-**effect sizes of significant exome variants by consequence** (synonymous / missense / pLoF).
+We zoom into a single chromosome (default **chr16**, home of the *FTO* common-variant peak). Here the
+Pan-UKB GWAS has been **lifted from GRCh37 to GRCh38** (see `fetch_gene_models.py`), so it shares **one
+coordinate system** with the Genebass exome data and with a **gene / coding-exon track** drawn beneath
+the plot. Across chr16 the **exome** hits sit **on coding exons** (that is all the exome assay can see),
+whereas the **common-variant** GWAS tags broad regulatory regions. Zooming into *FTO* shows the classic
+picture: the GWAS peak sits in *FTO*'s **first intron** with **no coding exon beneath it** — and there
+are **no exome/coding hits inside *FTO* at all** (the signal is regulatory, acting at a distance on
+*IRX3/IRX5*). After plotting, compare the **effect sizes of significant exome variants by consequence**
+(synonymous / missense / pLoF).
 """
 
 S2_MIAMI_STUDENT = """\
-# Part A: a BMI Miami plot on one chromosome (Pan-UKB GWAS up, Genebass exome down).
+# Part A: a BMI Miami plot for chr16 on ONE coordinate system (GRCh38).
+# Pan-UKB common-variant GWAS points UP; Genebass exome single-variant results point DOWN.
 MIAMI_CHROM = 16
 
-# Pan-UKB common-variant GWAS on this chromosome (GRCh37 positions).
-gwas_on_chrom = real['bmi']['chrom'] == MIAMI_CHROM
-gwas_pos_mb   = real['bmi']['pos'][gwas_on_chrom] / 1e6
-gwas_nlog10p  = real['bmi']['nlog10p'][gwas_on_chrom]
+# Pan-UKB common-variant GWAS on chr16, lifted GRCh37->GRCh38 so it lines up with the exome data.
+gwas_pos_mb  = genemodels['gw_pos38'] / 1e6
+gwas_nlog10p = genemodels['gw_nlog10p']
 
-# Genebass exome single-variant results on this chromosome (GRCh38 positions).
+# Genebass exome single-variant results on chr16 (already GRCh38).
 exome_on_chrom = genebass[genebass['chrom'] == str(MIAMI_CHROM)]
 exome_pos_mb   = exome_on_chrom['pos'].values / 1e6
 exome_nlog10p  = exome_on_chrom['nlog10p'].values
@@ -2251,46 +2270,120 @@ exome_nlog10p  = exome_on_chrom['nlog10p'].values
 fig, ax = plt.subplots(figsize=(12, 5))
 # Top half: GWAS pointing up.
 ax.scatter(gwas_pos_mb, gwas_nlog10p, s=8, alpha=0.5, color='steelblue',
-           label='Pan-UKB GWAS — common variants (GRCh37)')
+           label='Pan-UKB GWAS — common variants (GRCh38, lifted)')
 # YOUR CODE HERE: bottom half — plot the Genebass exome variants pointing DOWN
 # (i.e. at y = -exome_nlog10p).
 ax.scatter(exome_pos_mb, ???, s=16, alpha=0.7, color='#e15759',
            label='Genebass exome — single variants (GRCh38)')
 
 ax.axhline(0, color='black', lw=0.8)
-ax.axhline( -np.log10(5e-8), color='grey', ls='--', lw=0.8)   # genome-wide line (top)
-ax.axhline(  np.log10(5e-8), color='grey', ls='--', lw=0.8)   # genome-wide line (bottom)
+ax.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)   # genome-wide line (top)
+ax.axhline( np.log10(5e-8), color='grey', ls='--', lw=0.8)   # genome-wide line (bottom)
 ax.set_yticklabels([f'{abs(t):.0f}' for t in ax.get_yticks()])  # show |−log10 p| on both halves
-ax.set_xlabel(f'Position on chr{MIAMI_CHROM} (Mb)')
+ax.set_xlabel(f'Position on chr{MIAMI_CHROM} (Mb, GRCh38)')
 ax.set_ylabel(r'$-\\log_{10}(p)$   (GWAS up / exome down)')
-ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM}: common-variant GWAS vs exome single variants')
+ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM} (GRCh38): common-variant GWAS vs exome')
 ax.legend(fontsize=8, loc='upper right'); plt.tight_layout(); plt.show()
-print("Q: Do the GWAS peak and the exome coding hits fall at exactly the same position?")
-print("   (Remember: GRCh37 vs GRCh38 — we did not lift over.)")
+
+# Provided: zoom into FTO and draw a gene / coding-exon track underneath. Because everything is now
+# on GRCh38, we can read off WHICH variants fall in coding sequence.
+def gene_track(ax_track, x0_mb, x1_mb):
+    \"\"\"chr16 genes in [x0_mb, x1_mb]: thin line = gene body, thick black = coding exon (CDS).\"\"\"
+    names = genemodels['gene_name']
+    for gi in range(len(names)):
+        gs, ge = genemodels['gene_start'][gi] / 1e6, genemodels['gene_end'][gi] / 1e6
+        if ge < x0_mb or gs > x1_mb:
+            continue
+        ax_track.plot([max(gs, x0_mb), min(ge, x1_mb)], [0, 0], color='grey', lw=1, zorder=1)
+        if x0_mb <= (gs + ge) / 2 <= x1_mb:
+            ax_track.annotate(names[gi], ((gs + ge) / 2, 0), xytext=(0, 7),
+                              textcoords='offset points', ha='center', fontsize=7, color='darkred')
+    for s, e in zip(genemodels['cds_start'], genemodels['cds_end']):
+        if e / 1e6 < x0_mb or s / 1e6 > x1_mb:
+            continue
+        ax_track.plot([s / 1e6, e / 1e6], [0, 0], color='black', lw=7, solid_capstyle='butt', zorder=2)
+    ax_track.set_yticks([]); ax_track.set_ylim(-0.6, 1.0); ax_track.set_xlim(x0_mb, x1_mb)
+
+_fto = list(genemodels['gene_name']).index('FTO')          # FTO gene window (GRCh38), padded
+fto_s, fto_e = genemodels['gene_start'][_fto] / 1e6, genemodels['gene_end'][_fto] / 1e6
+pad = 0.15 * (fto_e - fto_s); ZOOM = (fto_s - pad, fto_e + pad)
+
+fig, (axz, axg) = plt.subplots(2, 1, figsize=(11, 6), sharex=True,
+                               gridspec_kw={'height_ratios': [4, 1]})
+zg = (gwas_pos_mb >= ZOOM[0]) & (gwas_pos_mb <= ZOOM[1])
+ze = (exome_pos_mb >= ZOOM[0]) & (exome_pos_mb <= ZOOM[1])
+axz.scatter(gwas_pos_mb[zg], gwas_nlog10p[zg], s=14, alpha=0.6, color='steelblue', label='GWAS (common)')
+axz.scatter(exome_pos_mb[ze], -exome_nlog10p[ze], s=24, alpha=0.8, color='#e15759', label='exome (coding)')
+axz.axhline(0, color='black', lw=0.8); axz.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)
+axz.set_yticklabels([f'{abs(t):.0f}' for t in axz.get_yticks()])
+axz.set_ylabel(r'$-\\log_{10}(p)$'); axz.legend(fontsize=8, loc='upper right')
+axz.set_title('Zoom on FTO (chr16, GRCh38): GWAS up / exome down')
+gene_track(axg, *ZOOM)
+axg.set_xlabel('Position on chr16 (Mb, GRCh38)'); axg.set_ylabel('genes\\n(CDS thick)', fontsize=8)
+plt.tight_layout(); plt.show()
+print("Q: The GWAS peak sits over FTO intron 1 (no coding exon beneath it), and there are no")
+print("   exome/coding hits inside FTO at all. What does this regulatory (non-coding) common-variant")
+print("   signal say about how common variants act, vs the coding variants the exome scan can see?")
 """
 
 S2_MIAMI_SOL = """\
 MIAMI_CHROM = 16
-gwas_on_chrom = real['bmi']['chrom'] == MIAMI_CHROM
-gwas_pos_mb   = real['bmi']['pos'][gwas_on_chrom] / 1e6
-gwas_nlog10p  = real['bmi']['nlog10p'][gwas_on_chrom]
+gwas_pos_mb  = genemodels['gw_pos38'] / 1e6          # GWAS lifted GRCh37->GRCh38
+gwas_nlog10p = genemodels['gw_nlog10p']
 exome_on_chrom = genebass[genebass['chrom'] == str(MIAMI_CHROM)]
 exome_pos_mb   = exome_on_chrom['pos'].values / 1e6
 exome_nlog10p  = exome_on_chrom['nlog10p'].values
 
 fig, ax = plt.subplots(figsize=(12, 5))
 ax.scatter(gwas_pos_mb, gwas_nlog10p, s=8, alpha=0.5, color='steelblue',
-           label='Pan-UKB GWAS — common variants (GRCh37)')
-ax.scatter(exome_pos_mb, -exome_nlog10p, s=16, alpha=0.7, color='#e15759',
+           label='Pan-UKB GWAS — common variants (GRCh38, lifted)')
+ax.scatter(exome_pos_mb, -exome_nlog10p, s=16, alpha=0.7, color='#e15759',   # KEY: exome points DOWN
            label='Genebass exome — single variants (GRCh38)')
 ax.axhline(0, color='black', lw=0.8)
 ax.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)
 ax.axhline( np.log10(5e-8), color='grey', ls='--', lw=0.8)
 ax.set_yticklabels([f'{abs(t):.0f}' for t in ax.get_yticks()])
-ax.set_xlabel(f'Position on chr{MIAMI_CHROM} (Mb)')
+ax.set_xlabel(f'Position on chr{MIAMI_CHROM} (Mb, GRCh38)')
 ax.set_ylabel(r'$-\\log_{10}(p)$   (GWAS up / exome down)')
-ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM}: common-variant GWAS vs exome single variants')
+ax.set_title(f'BMI Miami plot, chr{MIAMI_CHROM} (GRCh38): common-variant GWAS vs exome')
 ax.legend(fontsize=8, loc='upper right'); plt.tight_layout(); plt.show()
+
+def gene_track(ax_track, x0_mb, x1_mb):
+    \"\"\"chr16 genes in [x0_mb, x1_mb]: thin line = gene body, thick black = coding exon (CDS).\"\"\"
+    names = genemodels['gene_name']
+    for gi in range(len(names)):
+        gs, ge = genemodels['gene_start'][gi] / 1e6, genemodels['gene_end'][gi] / 1e6
+        if ge < x0_mb or gs > x1_mb:
+            continue
+        ax_track.plot([max(gs, x0_mb), min(ge, x1_mb)], [0, 0], color='grey', lw=1, zorder=1)
+        if x0_mb <= (gs + ge) / 2 <= x1_mb:
+            ax_track.annotate(names[gi], ((gs + ge) / 2, 0), xytext=(0, 7),
+                              textcoords='offset points', ha='center', fontsize=7, color='darkred')
+    for s, e in zip(genemodels['cds_start'], genemodels['cds_end']):
+        if e / 1e6 < x0_mb or s / 1e6 > x1_mb:
+            continue
+        ax_track.plot([s / 1e6, e / 1e6], [0, 0], color='black', lw=7, solid_capstyle='butt', zorder=2)
+    ax_track.set_yticks([]); ax_track.set_ylim(-0.6, 1.0); ax_track.set_xlim(x0_mb, x1_mb)
+
+_fto = list(genemodels['gene_name']).index('FTO')
+fto_s, fto_e = genemodels['gene_start'][_fto] / 1e6, genemodels['gene_end'][_fto] / 1e6
+pad = 0.15 * (fto_e - fto_s); ZOOM = (fto_s - pad, fto_e + pad)
+
+fig, (axz, axg) = plt.subplots(2, 1, figsize=(11, 6), sharex=True,
+                               gridspec_kw={'height_ratios': [4, 1]})
+zg = (gwas_pos_mb >= ZOOM[0]) & (gwas_pos_mb <= ZOOM[1])
+ze = (exome_pos_mb >= ZOOM[0]) & (exome_pos_mb <= ZOOM[1])
+axz.scatter(gwas_pos_mb[zg], gwas_nlog10p[zg], s=14, alpha=0.6, color='steelblue', label='GWAS (common)')
+axz.scatter(exome_pos_mb[ze], -exome_nlog10p[ze], s=24, alpha=0.8, color='#e15759', label='exome (coding)')
+axz.axhline(0, color='black', lw=0.8); axz.axhline(-np.log10(5e-8), color='grey', ls='--', lw=0.8)
+axz.set_yticklabels([f'{abs(t):.0f}' for t in axz.get_yticks()])
+axz.set_ylabel(r'$-\\log_{10}(p)$'); axz.legend(fontsize=8, loc='upper right')
+axz.set_title('Zoom on FTO (chr16, GRCh38): GWAS up / exome down')
+gene_track(axg, *ZOOM)
+axg.set_xlabel('Position on chr16 (Mb, GRCh38)'); axg.set_ylabel('genes\\n(CDS thick)', fontsize=8)
+plt.tight_layout(); plt.show()
+# FTO intron-1 GWAS peak is regulatory (acts on IRX3/IRX5) with NO coding hits in FTO itself; the
+# exome's coding hits sit elsewhere on chr16. Common signals tag regulatory DNA; exomes see only CDS.
 """
 
 S2_CSQ_STUDENT = """\
