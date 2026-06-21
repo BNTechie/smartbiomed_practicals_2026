@@ -12,19 +12,18 @@ its complexities (population structure, relatedness) and fine-mapping.
 **Session 1 — Introduction to association testing** (`session1/`)
 Quality control (missingness, MAF, a provided HWE test), running linear and logistic GWAS,
 interpreting effect sizes, and three simulated phenotypes (a low-h² continuous trait, a
-~10%-prevalence binary trait, and an uncorrelated fully-polygenic trait) on ~50k variants across
+\~10%-prevalence binary trait, and an uncorrelated fully-polygenic trait) on \~50k variants across
 chromosome 1.
-Challenges: an HWE chi-squared test from scratch, dominant/recessive encodings, a manual LocusZoom
-plot, a Drosophila linkage analysis à la Sturtevant (1913), age-of-onset ascertainment, and
-polygenic scores (PGS).
+Challenges: a sex-stratified GWAS, age-of-onset ascertainment, a manual LocusZoom plot, and a
+Drosophila linkage analysis à la Sturtevant (1913).
 
 **Session 2 — Interpreting GWAS** (`session2/`)
-Genome-wide Manhattan plots, QQ plots and λ_GC, pleiotropy, and a trumpet/power-curve plot — built
+Genome-wide Manhattan plots, QQ plots and λ_GC, and pleiotropy — built
 on **real Pan-UKB summary statistics** (EUR) for LDL cholesterol, coronary/ischaemic heart disease,
 and body mass index. Challenges: QQ confidence bands (a near-null trait vs polygenic BMI),
-MAF-stratified QQ, winner's curse (discovery/validation resampling), a **GWAS × Genebass exome
+MAF-stratified QQ, a trumpet plot and power curves, a **GWAS × Genebass exome
 Miami plot** with effect sizes by variant consequence, and Bonferroni vs Šidák.
-Individual-level analyses (winner's curse, null-QQ contrast) reuse the simulated Session 1 cohort.
+The null-QQ contrast reuses the simulated Session 1 cohort for individual-level data.
 
 **Session 3 — Complexities of GWAS: population structure & relatedness** (`session3/`)
 See stratification inflate a GWAS, compute **PCA from scratch** (SVD of standardised genotypes) on an
