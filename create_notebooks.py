@@ -508,13 +508,13 @@ def compute_hwe_midp(G):
 S1_TITLE = """\
 # Session 1: Introduction to GWAS — Practical
 
-**Timing**: This practical is designed for ≈45 minutes.
-- Parts 1–3 should take ≈30–35 minutes.
+**Timing**: This practical is designed for \\~45 minutes.
+- Parts 1–3 should take \\~30–35 minutes.
 - Challenge questions are for fast finishers.
 
-**Dataset**: Simulated GWAS data for ≈100,000 variants with realistic block LD across chr1 (1–250 Mb).
+**Dataset**: Simulated GWAS data for \\~100,000 variants with realistic block LD across chr1 (1–250 Mb).
 - Continuous trait: simulated liability phenotype (h² ≈ 0.035, MAF-dependent spike-and-slab prior).
-- Binary trait: derived from the continuous liability via a threshold model (≈10% cases).
+- Binary trait: derived from the continuous liability via a threshold model (\\~10% cases).
 
 **Tip**: If you get stuck on any exercise, hints are in the comments. Reveal the worked solution by
 clicking the collapsed **Solution** cell beneath it, and check short conceptual questions with the
@@ -844,7 +844,7 @@ For binary (case/control) phenotypes, logistic regression is standard.
 The model gives a **log-odds ratio** (log-OR) per allele.
 
 The binary phenotype `y_bin` (1=case, 0=control) was derived from the continuous phenotype
-via a **liability threshold**: individuals above the 90th percentile of liability are cases (~10% prevalence).
+via a **liability threshold**: individuals above the 90th percentile of liability are cases (\\~10% prevalence).
 This is the standard liability threshold model for complex diseases.
 
 We provide `run_logistic_gwas_fast()` — a score-test approximation that runs quickly.
@@ -920,7 +920,7 @@ They connect directly to ideas from the lecture.
 """
 
 S1_CQ1_MD = """\
-### Challenge {N}: Additive, dominant, and recessive models — ~10 min
+### Challenge {N}: Additive, dominant, and recessive models — \\~10 min
 
 The standard GWAS uses an **additive** model: genotype is encoded 0/1/2 (copies of ALT allele),
 so the heterozygote AB sits midway between AA and BB. We can write that encoding as a little
@@ -1021,7 +1021,7 @@ plt.tight_layout(); plt.show()
 """
 
 S1_LZ_MD = """\
-### Challenge {N}: Manual LocusZoom plot — ~12 min
+### Challenge {N}: Manual LocusZoom plot — \\~12 min
 
 A **LocusZoom plot** shows $-\\log_{10}(p)$ vs. position for a region around a hit, with points
 **coloured by LD** ($r^2$) with the lead variant. It reveals the LD structure that produces the
@@ -1095,7 +1095,7 @@ plt.tight_layout(); plt.show()
 """
 
 S1_CQ2_MD = """\
-### Challenge {N}: Drosophila linkage analysis — ~25 min
+### Challenge {N}: Drosophila linkage analysis — \\~25 min
 
 *(Inspired by Sturtevant, 1913 — the first genetic map.)*
 
@@ -1246,7 +1246,7 @@ print("\\nGround truth (cM):", TRUE_POS)
 
 # ── Challenge 5: Ascertainment by age of onset ───────────────────────────────
 S1_CQ4_MD = """\
-### Challenge {N}: Ascertainment by age of onset — ~10 min
+### Challenge {N}: Ascertainment by age of onset — \\~10 min
 
 Disease cohorts are often **ascertained** — individuals only enter as *cases* once they have
 been diagnosed. For a late-onset disease, someone who will eventually develop it but is still
@@ -1318,7 +1318,7 @@ plt.tight_layout(); plt.show()
 
 # ── Challenge 6: Sex-stratified GWAS ─────────────────────────────────────────
 S1_CQSEX_MD = """\
-### Challenge {N}: Sex-stratified GWAS — ~10 min
+### Challenge {N}: Sex-stratified GWAS — \\~10 min
 
 Effects can differ between the sexes. The standard pooled GWAS estimates a single effect per
 variant — so a variant that acts in *opposite* directions in males and females averages out to
@@ -1393,7 +1393,7 @@ if sexspec_idx_qc >= 0:
 
 # ── Challenge 7: Polygenic scores (PGS) ──────────────────────────────────────
 S1_CQ5_MD = """\
-### Challenge {N}: Polygenic scores — predicting the genetic component — ~15 min
+### Challenge {N}: Polygenic scores — predicting the genetic component — \\~15 min
 
 A **polygenic score** is the predicted genetic value $\\hat g_i = \\sum_j x_{ij}\\,\\hat\\beta_j$,
 built from GWAS effect estimates. To judge prediction honestly we fit the effects in a
@@ -1485,7 +1485,7 @@ S2_TITLE = """\
 # Session 2: Interpreting GWAS — Practical
 
 **Timing**: 45 minutes.
-- Parts 1–2 (Manhattan + QQ plots): ~30 minutes.
+- Parts 1–2 (Manhattan + QQ plots): \\~30 minutes.
 - Challenge questions: for fast finishers.
 
 **Data**: We now use **real genome-wide Pan-UKB summary statistics** (EUR) for three traits —
@@ -1496,7 +1496,7 @@ cell also re-runs the Session 1 *simulated* GWAS, which we still use for the ana
 individual-level genotypes (null-QQ contrast).
 
 **Setup**: Run the setup cell once at the top (loads real sumstats + re-runs the simulated
-GWAS, ~30s) before any exercises.
+GWAS, \\~30s) before any exercises.
 """
 
 # Loader for the bundled real Pan-UKB summary statistics (LDL / CAD / BMI, EUR).
@@ -1853,11 +1853,12 @@ S2_EX22_STUDENT = """\
 
 def lambda_gc(nlog10p):
     # YOUR CODE HERE
-    # Step 1: convert -log10(p) back to p, then to chi-squared statistics (1 df)
-    # Hint: p = 10**(-nlog10p);  chi2 = stats.chi2.isf(p, df=1)
+    df = 1                                  # GWAS test statistics are chi-squared with 1 df
+    # Step 1: convert -log10(p) back to p, then to chi-squared statistics
+    # Hint: p = 10**(-nlog10p);  chi2 = stats.chi2.isf(p, df)
     p    = ???
     chi2 = ???
-    # Step 2: lambda_GC = median(chi2_obs) / expected median of chi2(1)
+    # Step 2: lambda_GC = median(chi2_obs) / expected median of chi2(1 df)
     return ???
 
 for t in REAL_TRAITS:
@@ -1871,9 +1872,10 @@ print("   How could you tell the two apart? (hint: LDSC intercept, null/synonymo
 
 S2_EX22_SOL = """\
 def lambda_gc(nlog10p):
+    df = 1
     p    = np.power(10.0, -np.clip(nlog10p, 0, 300))
-    chi2 = stats.chi2.isf(np.clip(p, 1e-300, 1), df=1)
-    return np.median(chi2) / stats.chi2.ppf(0.5, df=1)   # expected median ≈ 0.4549
+    chi2 = stats.chi2.isf(np.clip(p, 1e-300, 1), df)
+    return np.median(chi2) / stats.chi2.ppf(0.5, df)   # expected median ≈ 0.4549
 
 for t in REAL_TRAITS:
     lam = lambda_gc(real[t]['nlog10p'][real[t]['rand']])
@@ -1881,7 +1883,7 @@ for t in REAL_TRAITS:
 """
 
 S2_NULL_QQ = """\
-# ── Sanity check: QQ plot under the null (simulated cohort) ──────────────────
+# ── Sense check: QQ plot under the null (simulated cohort) ──────────────────
 # The real traits above show inflation from genuine polygenic signal. To see what
 # NO signal looks like, we go back to the SIMULATED individual-level data and shuffle
 # the phenotype to destroy any genotype-phenotype relationship, then re-run GWAS.
@@ -1947,7 +1949,7 @@ S2_CQ_MD = """\
 """
 
 S2_CQ1_MD = """\
-### Challenge {N}: QQ plot with 95% confidence interval — ~10 min
+### Challenge {N}: QQ plot with 95% confidence interval — \\~10 min
 
 Under the null, the $k$-th smallest p-value follows a Beta$(k, n-k+1)$ distribution.
 Use `scipy.stats.beta.ppf` to add a 95% confidence band to the QQ plot.
@@ -2028,7 +2030,7 @@ plt.tight_layout(); plt.show()
 """
 
 S2_CQ2_MD = """\
-### Challenge {N}: MAF-stratified QQ plot — ~8 min
+### Challenge {N}: MAF-stratified QQ plot — \\~8 min
 
 Are rare variants (low MAF) better or worse behaved than common variants?
 Stratify the real BMI variants into MAF bins and overlay QQ plots (random subset).
@@ -2097,7 +2099,7 @@ ax.legend(); plt.tight_layout(); plt.show()
 """
 
 S2_CQ3_MD = """\
-### Challenge {N}: Trumpet plot and power curves — ~12 min
+### Challenge {N}: Trumpet plot and power curves — \\~12 min
 
 A **trumpet plot** shows the signed effect size ($\\hat{\\beta}$) vs. MAF for each variant.
 The "trumpet" shape emerges because the power curves form a ±symmetric band:
@@ -2178,7 +2180,7 @@ plt.tight_layout(); plt.show()
 """
 
 S2_MIAMI_MD = """\
-### Challenge {N}: GWAS vs exome — a BMI Miami plot — ~12 min
+### Challenge {N}: GWAS vs exome — a BMI Miami plot — \\~12 min
 
 A **Miami plot** stacks two association scans back-to-back on one position axis: here the **Pan-UKB
 common-variant GWAS** for BMI points **up**, and **Genebass whole-exome single-variant** results for
@@ -2187,7 +2189,7 @@ BMI point **down**. The common-variant GWAS tags broad regulatory regions; the e
 
 The Pan-UKB GWAS has been **lifted from GRCh37 to GRCh38** (see `fetch_gene_models.py`), so it shares
 **one coordinate system** with the Genebass exome data and with a **gene / coding-exon track** drawn
-beneath the plot. We then **zoom into the _ADCY9_ locus** (chr16p13.3, ~3.9–4.2 Mb), a BMI-associated
+beneath the plot. We then **zoom into the _ADCY9_ locus** (chr16p13.3, \\~3.9–4.2 Mb), a BMI-associated
 region covered by **both** assays, and draw the gene models — *CREBBP*, *ADCY9*, *SRL* — each on its own
 lane underneath. The contrast to look for: the **exome (coding) variants sit squarely on coding exons**
 (boxes in the track) — that is all an exome assay can see — while the **common-variant GWAS variants are
@@ -2412,7 +2414,7 @@ for g, a in zip(groups, abs_beta_by_group):
 """
 
 S2_SIDAK_MD = """\
-### Challenge {N}: Bonferroni vs Šidák — ~8 min
+### Challenge {N}: Bonferroni vs Šidák — \\~8 min
 
 The genome-wide threshold $5\\times10^{-8}$ is essentially a **Bonferroni** correction: for a
 family-wise error rate $\\alpha_{FW}$ over $C$ tests, use per-test $\\alpha_{PT}=\\alpha_{FW}/C$
@@ -2659,10 +2661,10 @@ def build_session2(answers=False, run=False, nb_path=None):
 S3_TITLE = """\
 # Session 3: Complexities of GWAS — Population Structure & Relatedness
 
-**Timing**: ≈60 minutes (Parts 1–4 ≈45 min; challenges for fast finishers).
+**Timing**: \\~60 minutes (Parts 1–4 \\~45 min; challenges for fast finishers).
 
-**Dataset**: a simulated **"All of Us"-style** diverse cohort (≈2,000 participants) plus a small
-**"1000 Genomes"-style reference panel** (≈75 individuals per continental group, with known labels),
+**Dataset**: a simulated **"All of Us"-style** diverse cohort (\\~2,000 participants) plus a small
+**"1000 Genomes"-style reference panel** (\\~75 individuals per continental group, with known labels),
 each genotyped at 20,000 independent SNPs.
 - `G`        : the diverse cohort we analyse.
 - `G_ref`    : the labelled reference panel (superpopulations AFR, AMR, EAS, EUR, SAS).
@@ -2806,16 +2808,19 @@ Z = (genotypes_all - genotype_mean) / genotype_sd
 # Step 3. PCA via the SVD. Writing the scaled genotype matrix as
 #             Z / sqrt(n_total) = U @ S_diag @ Vᵀ,
 #         the principal-component SCORES are  PC = U @ S_diag  — each left-singular
-#         vector (column of U) scaled by its singular value.
-#         IMPORTANT: np.linalg.svd returns S as a 1-D array of singular values, NOT the
-#         diagonal matrix S_diag. To do the matrix multiply U @ S_diag you must first turn
-#         that vector into a diagonal matrix yourself.
+#         vector (column of U) scaled by its singular value. (np.linalg.svd returns S as a
+#         1-D vector of singular values, so we rebuild the diagonal matrix with np.diag.)
 n_total = genotypes_all.shape[0]
 U, S, Vt = np.linalg.svd(Z / np.sqrt(n_total), full_matrices=False)
-
-# YOUR CODE HERE: build the diagonal singular-value matrix, then form the PC scores.
-S_diag = ???                                        # hint: np.diag(...) turns the vector S into a diagonal matrix
+S_diag = np.diag(S)                                 # 1-D singular values → diagonal matrix
 PC     = U @ S_diag                                 # (n_total, k) PC scores
+
+# YOUR CODE HERE: each singular value squared is proportional to the variance its PC captures.
+# Compute the FRACTION of total variance explained by each PC — this shows how much of the
+# genetic variation lives on the top (ancestry) axes.
+# Hint: variance on PC i ∝ S[i]**2, so divide each S**2 by the total.
+var_explained = ???
+print("Variance explained by top 5 PCs (%):", np.round(var_explained[:5] * 100, 1))
 
 # Step 4. Split the PC scores back into reference rows (first) and cohort rows (after).
 PC_ref    = PC[:n_ref]
@@ -2845,6 +2850,9 @@ n_total = genotypes_all.shape[0]
 U, S, Vt = np.linalg.svd(Z / np.sqrt(n_total), full_matrices=False)
 S_diag = np.diag(S)                                 # 1-D singular values → diagonal matrix
 PC     = U @ S_diag                                 # PC scores = U @ S_diag
+
+var_explained = S**2 / np.sum(S**2)
+print("Variance explained by top 5 PCs (%):", np.round(var_explained[:5] * 100, 1))
 
 PC_ref    = PC[:n_ref]
 PC_cohort = PC[n_ref:]
@@ -2987,7 +2995,7 @@ S3_PART4_MD = """\
 ## Part 4: Correcting stratification with PCs
 
 Including the top PCs as **covariates** soaks up the ancestry signal, so the spurious associations
-disappear and $\\lambda_{GC}$ returns to ≈1. Crucially, **true** signal survives — re-run the
+disappear and $\\lambda_{GC}$ returns to \\~1. Crucially, **true** signal survives — re-run the
 clean phenotype `y_clean` (which has real causal variants) and check its hits are still there.
 
 (We use `PC_cohort` — the cohort's own rows of the PCA — as the covariates.)
@@ -3050,7 +3058,7 @@ S3_CQ_MD = """\
 """
 
 S3_CQ1_MD = """\
-### Challenge {N}: Who gets left "Unassigned"? — ~12 min
+### Challenge {N}: Who gets left "Unassigned"? — \\~12 min
 
 The classifier left some cohort members unlabelled. Are these really the **admixed** individuals?
 We can check, because the simulation stored each person's **true ancestry proportions** (`true_anc`,
@@ -3109,7 +3117,7 @@ plt.tight_layout(); plt.show()
 """
 
 S3_CQ2_MD = """\
-### Challenge {N}: Relatedness and the GRM — ~12 min
+### Challenge {N}: Relatedness and the GRM — \\~12 min
 
 Close relatives share long genomic segments, which (like ancestry) violates the independence GWAS
 assumes. The **genetic relatedness matrix** $\\text{GRM} = \\frac{1}{M} Z Z^\\top$ quantifies it.
@@ -3233,9 +3241,9 @@ def build_session3(answers=False, run=False, nb_path=None):
 S4_TITLE = """\
 # Session 4: Fine-mapping
 
-**Timing**: ≈60 minutes (Parts 1–3 ≈35 min; challenges for fast finishers).
+**Timing**: \\~60 minutes (Parts 1–3 \\~35 min; challenges for fast finishers).
 
-**Dataset**: two simulated GWAS **loci** (≈400 variants each, N=5,000) with realistic LD.
+**Dataset**: two simulated GWAS **loci** (\\~400 variants each, N=5,000) with realistic LD.
 - Locus A has **one** causal variant hidden in a cluster of near-perfectly-correlated SNPs.
 - Locus B has **two** causal variants.
 
@@ -3485,7 +3493,7 @@ S4_CQ_MD = """\
 """
 
 S4_CQ1_MD = """\
-### Challenge {N}: A PIP LocusZoom — ~10 min
+### Challenge {N}: A PIP LocusZoom — \\~10 min
 
 Re-draw the locus with each variant's height = PIP (instead of −log10 p). The credible set should
 stand out as the handful of high-PIP variants. Mark the true causal.
@@ -3526,7 +3534,7 @@ print(f"Sum of PIP over the credible set: {pip[credible_set].sum():.2f}")
 """
 
 S4_CQ2_MD = """\
-### Challenge {N}: Resolution depends on power — ~10 min
+### Challenge {N}: Resolution depends on power — \\~10 min
 
 Fine-mapping resolution improves with sample size. Recompute the credible set on random subsets of
 the individuals (N/2, N/4) and watch it **grow** as power falls.
@@ -3577,7 +3585,7 @@ for fraction in [1.0, 0.5, 0.25]:
 """
 
 S4_CQ3_MD = """\
-### Challenge {N}: When one causal variant isn't enough — ~12 min
+### Challenge {N}: When one causal variant isn't enough — \\~12 min
 
 The single-causal credible set assumes exactly **one** causal variant per locus. **Locus B** has
 two. Build the single-causal credible set for Locus B and check whether it captures **both**
