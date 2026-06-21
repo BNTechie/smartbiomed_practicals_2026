@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 """
-Generate SMARTbiomed GWAS practical notebooks for Sessions 1 & 2.
-Produces:
-  session1/practical.ipynb  — student worksheet
-  session1/answers.ipynb    — same with collapsed solution cells
-  session2/practical.ipynb
-  session2/answers.ipynb
+Generate SMARTbiomed GWAS practical notebooks for Sessions 1–4.
+Produces, per session:
+  sessionN/practical.ipynb  — student worksheet with revealable solution + 'Show answer' cells
+  sessionN/run.ipynb        — fully-solved, executable instructor version (run for outputs)
 
 Run: python create_notebooks.py
 """
@@ -28,9 +26,17 @@ def code(source, tags=None):
     }
 
 def solution(source):
-    """A collapsed solution cell for the answer notebook."""
+    """A collapsed (click-to-reveal) solution cell for the practical notebook."""
     header = "# @title Solution { display-mode: \"form\" }\n# ▼ Click ▶ to reveal solution\n\n"
     return code(header + source)
+
+def show_answer(text):
+    """A collapsible 'Show answer' dropdown (markdown <details>, renders in Jupyter & Colab).
+
+    Used after a conceptual `Q:` prompt so students can self-check a short written answer.
+    """
+    return ("<details>\n<summary>👉 <b>Show answer</b></summary>\n\n"
+            + text.strip() + "\n\n</details>")
 
 def notebook(cells):
     return {
@@ -502,15 +508,17 @@ def compute_hwe_midp(G):
 S1_TITLE = """\
 # Session 1: Introduction to GWAS — Practical
 
-**Timing**: This practical is designed for ~45 minutes.
-- Parts 1–3 should take ~30–35 minutes.
+**Timing**: This practical is designed for ≈45 minutes.
+- Parts 1–3 should take ≈30–35 minutes.
 - Challenge questions are for fast finishers.
 
-**Dataset**: Simulated GWAS data for ~100,000 variants with realistic block LD across chr1 (1–250 Mb).
+**Dataset**: Simulated GWAS data for ≈100,000 variants with realistic block LD across chr1 (1–250 Mb).
 - Continuous trait: simulated liability phenotype (h² ≈ 0.035, MAF-dependent spike-and-slab prior).
-- Binary trait: derived from the continuous liability via a threshold model (~10% cases).
+- Binary trait: derived from the continuous liability via a threshold model (≈10% cases).
 
-**Tip**: If you get stuck on any exercise, hints are in the comments. Solutions are in `answers.ipynb`.
+**Tip**: If you get stuck on any exercise, hints are in the comments. Reveal the worked solution by
+clicking the collapsed **Solution** cell beneath it, and check short conceptual questions with the
+**👉 Show answer** dropdowns.
 """
 
 S1_PHENOTYPE_PLOTS = """\
@@ -652,8 +660,7 @@ Violations can indicate genotyping errors (excess homozygosity is most common).
 Standard GWAS threshold: HWE $p < 10^{-6}$ (remove variants that fail).
 
 We **provide** a vectorised HWE test (`compute_hwe_midp`, based on the heterozygote deviation) —
-run it below and use it for QC. In Challenge 1 you'll implement the classic 3-class chi-squared
-test yourself and compare.
+run it below and use it for QC.
 """
 
 # Provided HWE test cell (regular Part-1 flow): students just run it and use hwe_pvals for QC.
@@ -695,7 +702,7 @@ print(f"  After missingness QC: {pass_miss.sum():>7,} variants")
 print(f"  After MAF QC:         {pass_maf.sum():>7,} variants")
 print(f"  After HWE QC:         {pass_hwe.sum():>7,} variants")
 print(f"  After all filters:    {M_qc:>7,} variants  ← G_qc")
-# (G_raw is kept so the HWE chi-squared challenge can re-run on the raw genotypes.)
+# (G_raw is kept around for reference; downstream analysis uses the QC'd G_qc.)
 """
 
 S1_PART2_MD = """\
@@ -715,7 +722,8 @@ S1_EX21_STUDENT = """\
 # ── Exercise 2.1: GWAS without covariates ────────────────────────────────────
 # Run GWAS for the continuous trait without adjusting for age or sex.
 
-# YOUR CODE HERE — call run_gwas with appropriate arguments
+# YOUR CODE HERE — call run_gwas with the continuous phenotype and the QC'd genotypes.
+# Signature: run_gwas(y, G, covars=None); here pass no covariates.
 betas_nocov, ses_nocov, pvals_nocov = run_gwas(???, ???)
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -739,8 +747,10 @@ S1_EX22_STUDENT = """\
 # The covariate matrix should have shape (N, 2).
 
 # YOUR CODE HERE
-covars = np.column_stack([???])         # age and sex (standardise age!)
-betas_cov, ses_cov, pvals_cov = run_gwas(???, ???, ???)
+# np.column_stack([col1, col2]) stacks two 1-D arrays into an (N, 2) matrix.
+# Standardise age with (age - age.mean()) / age.std(); sex is already 0/1.
+covars = np.column_stack([???, ???])    # [standardised age, sex]
+betas_cov, ses_cov, pvals_cov = run_gwas(???, ???, ???)   # (phenotype, genotypes, covars)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Compare lambda GC before and after covariate adjustment
@@ -779,6 +789,8 @@ print(f"Lead variant: {rsids_qc[j_top]}  pos={pos_qc[j_top]:,} kbp  "
       f"beta={beta_top:.4f}  p={pvals_cov[j_top]:.2e}")
 
 # YOUR CODE HERE
+# Make each a length-3 array. A list comprehension over the 3 classes is easiest:
+#   np.array([ ... for g in range(3)]) — select a class with the boolean mask geno == g.
 means  = ???   # mean phenotype for each of the 3 genotype classes (0, 1, 2)
 counts = ???   # number of individuals per class
 
@@ -844,26 +856,31 @@ S1_EX31_STUDENT = """\
 # ── Exercise 3.1: Logistic GWAS for CAD ──────────────────────────────────────
 # Run the logistic GWAS for CAD using the fast score test.
 
-# YOUR CODE HERE
-covars = np.column_stack([???])    # same covariates as before
-log_ors, pvals_bin = run_logistic_gwas_fast(???, ???, ???)
+# YOUR CODE HERE — same covariate matrix as Exercise 2.2.
+# np.column_stack([standardised age, sex]) → (N, 2).
+covars = np.column_stack([???, ???])    # [standardised age, sex]
+log_ors, pvals_bin = run_logistic_gwas_fast(???, ???, ???)   # (binary phenotype, genotypes, covars)
 
 # ─────────────────────────────────────────────────────────────────────────────
 n_sig_bin = (pvals_bin < 5e-8).sum()
 print(f"Genome-wide significant binary-trait hits: {n_sig_bin:,}")
 
-# Compare LDL and CAD p-values at the same variants
-top_ldl_idx = np.argsort(pvals_cov)[:20]
+# Compare continuous- vs binary-trait significance at the top continuous-trait hits.
+top_ldl_idx = np.argsort(pvals_cov)[:20]          # np.argsort → indices that sort p ascending
+nlp_cont = -np.log10(np.clip(pvals_cov[top_ldl_idx], 1e-300, 1))
+nlp_bin  = -np.log10(np.clip(pvals_bin[top_ldl_idx],  1e-300, 1))
 fig, ax = plt.subplots(figsize=(6, 5))
-ax.scatter(-np.log10(pvals_cov[top_ldl_idx]+1e-15),
-           -np.log10(pvals_bin[top_ldl_idx]+1e-15),
-           alpha=0.8, s=40, color='steelblue')
+ax.scatter(nlp_cont, nlp_bin, alpha=0.8, s=40, color='steelblue')
+lim = max(nlp_cont.max(), nlp_bin.max()) * 1.05
+ax.plot([0, lim], [0, lim], '--', color='grey', lw=1, label='y = x')
+gw = -np.log10(5e-8)
+ax.axhline(gw, color='orange', ls=':', lw=1, label='p = 5e-8')
+ax.axvline(gw, color='orange', ls=':', lw=1)
+ax.set_xlim(0, lim); ax.set_ylim(0, lim)
 ax.set_xlabel('-log10(p) continuous trait')
 ax.set_ylabel('-log10(p) binary trait')
-ax.set_title('Top 20 continuous-trait hits: continuous vs binary p-values')
-for i, j in enumerate(top_ldl_idx[:5]):
-    ax.annotate(f"rs{j}", ((-np.log10(pvals_cov[j]+1e-15)),
-                            (-np.log10(pvals_bin[j]+1e-15))), fontsize=7)
+ax.set_title('Top 20 continuous-trait hits: continuous vs binary')
+ax.legend(fontsize=8)
 plt.tight_layout(); plt.show()
 print("Q: Do the same variants drive both continuous and binary trait associations?")
 """
@@ -876,12 +893,20 @@ n_sig_bin = (pvals_bin < 5e-8).sum()
 print(f"Genome-wide significant binary-trait hits: {n_sig_bin:,}")
 
 top_ldl_idx = np.argsort(pvals_cov)[:20]
+nlp_cont = -np.log10(np.clip(pvals_cov[top_ldl_idx], 1e-300, 1))
+nlp_bin  = -np.log10(np.clip(pvals_bin[top_ldl_idx],  1e-300, 1))
 fig, ax = plt.subplots(figsize=(6, 5))
-ax.scatter(-np.log10(pvals_cov[top_ldl_idx]+1e-15),
-           -np.log10(pvals_bin[top_ldl_idx]+1e-15),
-           alpha=0.8, s=40, color='steelblue')
-ax.set_xlabel('-log10(p) continuous'); ax.set_ylabel('-log10(p) binary')
-ax.set_title('Top 20 continuous-trait hits: continuous vs binary p-values')
+ax.scatter(nlp_cont, nlp_bin, alpha=0.8, s=40, color='steelblue')
+lim = max(nlp_cont.max(), nlp_bin.max()) * 1.05
+ax.plot([0, lim], [0, lim], '--', color='grey', lw=1, label='y = x')
+gw = -np.log10(5e-8)
+ax.axhline(gw, color='orange', ls=':', lw=1, label='p = 5e-8')
+ax.axvline(gw, color='orange', ls=':', lw=1)
+ax.set_xlim(0, lim); ax.set_ylim(0, lim)
+ax.set_xlabel('-log10(p) continuous trait')
+ax.set_ylabel('-log10(p) binary trait')
+ax.set_title('Top 20 continuous-trait hits: continuous vs binary')
+ax.legend(fontsize=8)
 plt.tight_layout(); plt.show()
 """
 
@@ -1097,28 +1122,31 @@ S1_CQ2_STUDENT = """\
 fly_df.head()
 """
 
-S1_CQ2B_STUDENT = """\
-# Part A (continued)
+# Provided table cell — students run this and READ the result, then answer in the next cell.
+S1_CQ2B_TABLE = """\
+# Part A (continued): trait frequency by sex
+# trait_cols is built with a list comprehension: [item for item in things if condition].
 trait_cols = [c for c in fly_df.columns if c.startswith('trait_')]
 
 # Provided: the frequency of each trait in females (sex=0) and males (sex=1).
 freq_by_sex = fly_df.groupby('sex')[trait_cols].mean()
 print(freq_by_sex.T)
+"""
 
+S1_CQ2B_STUDENT = """\
+# Read the table printed above and decide which traits look X-linked.
 # An X-linked recessive trait shows up in ~half of males (one X) but almost no females (need two
 # copies); an autosomal trait appears at a similar frequency in both sexes.
-# YOUR CODE HERE: read the table above and list the trait names that look X-linked.
-x_linked_traits = ???           # e.g. ['trait_eye', 'trait_wing', ...]
-print("\\nX-linked traits:", x_linked_traits)
+# YOUR CODE HERE: list the trait names that look X-linked.
+# Hint: just type them as a Python list of strings, e.g. ['trait_eye', 'trait_wing'].
+x_linked_traits = ???
+print("X-linked traits:", x_linked_traits)
 """
 
 S1_CQ2B_SOL = """\
-trait_cols = [c for c in fly_df.columns if c.startswith('trait_')]
-freq_by_sex = fly_df.groupby('sex')[trait_cols].mean()
-print(freq_by_sex.T)
 # X-linked traits have frequency ~0.5 in males and ~0 in females (read straight off the table).
 x_linked_traits = freq_by_sex.columns[(freq_by_sex.loc[1] > 0.3) & (freq_by_sex.loc[0] < 0.1)].tolist()
-print("\\nX-linked traits:", x_linked_traits)
+print("X-linked traits:", x_linked_traits)
 """
 
 S1_CQ2C_STUDENT = """\
@@ -1131,7 +1159,9 @@ males = fly_df[fly_df['sex'] == 1]
 def recombination_frequency(trait_a, trait_b):
     \"\"\"Fraction of males that are recombinant between trait_a and trait_b.\"\"\"
     # YOUR CODE HERE: a male is recombinant when his two trait phenotypes disagree.
-    return ???                      # e.g. compare males[trait_a] with males[trait_b]
+    # Hint: males[trait_a] != males[trait_b] is a True/False Series; its .mean() is the
+    #       fraction that are True (no need to sum and divide by len yourself).
+    return ???
 
 # Provided: build the pairwise recombination-frequency matrix using your function.
 n_x = len(x_linked_traits)
@@ -1236,6 +1266,8 @@ _, pvals_base = run_logistic_gwas_fast(y_bin, G_qc, covars)
 
 # YOUR CODE HERE
 # Late-onset ascertainment: a case younger than 60 has not yet been diagnosed → recode to control
+# Build a boolean mask combining two conditions with & (each wrapped in parentheses), e.g.
+#   (y_bin == 1) & (age < 60)
 y_asc = y_bin.copy()
 y_asc[???] = 0                     # cases with age < 60 become controls
 
@@ -1461,7 +1493,7 @@ LDL cholesterol (continuous), chronic ischaemic heart disease (binary), and body
 (highly polygenic) — for the Manhattan, QQ, trumpet and pleiotropy plots. We also bundle
 **Genebass whole-exome** single-variant results for BMI (for the Miami-plot challenge). The setup
 cell also re-runs the Session 1 *simulated* GWAS, which we still use for the analyses that need
-individual-level genotypes (null-QQ contrast, winner's curse).
+individual-level genotypes (null-QQ contrast).
 
 **Setup**: Run the setup cell once at the top (loads real sumstats + re-runs the simulated
 GWAS, ~30s) before any exercises.
@@ -1641,7 +1673,7 @@ side. (For clarity/speed we only plot variants with $p < 10^{-2}$.)
 """
 
 S2_EX11_STUDENT = """\
-# ── Exercise 1.1: Build a genome-wide Manhattan plot ─────────────────────────
+# ── Exercise 1.1: Build a genome-wide Manhattan plot (provided) ──────────────
 # We now use REAL Pan-UKB summary statistics (LDL, CAD, BMI) across all
 # chromosomes. Each trait dict `real[t]` has: chrom, pos, maf, beta, se, nlog10p.
 # NOTE: p-values are stored as nlog10p = -log10(p) already (avoids underflow at
@@ -1662,6 +1694,7 @@ def manhattan_plot(chrom, pos, nlog10p, title='Manhattan plot', ax=None, thresh_
 
     # Build a cumulative x-offset so chromosomes sit side by side
     offset, xticks, xlabels, x = 0, [], [], np.zeros(len(pos))
+    shades = ['#3b6ea5', '#9ecae1']                      # alternate two shades per chromosome
     for c in range(1, 23):
         m = chrom == c
         if not m.any():
@@ -1669,13 +1702,15 @@ def manhattan_plot(chrom, pos, nlog10p, title='Manhattan plot', ax=None, thresh_
         x[m] = pos[m] + offset
         cmax = pos[m].max()
         xticks.append(offset + cmax / 2); xlabels.append(str(c))
-        # YOUR CODE HERE: colour points for this chromosome (alternate two shades),
-        # then scatter x[m] vs y[m]
-        ???
+        # Colour this chromosome's points (alternating shades) and scatter; thin dense
+        # chromosomes with the provided _thin() helper so the figure stays light.
+        mi = np.where(m)[0]; sel = mi[_thin(len(mi), k=2500, seed=c)]
+        ax.scatter(x[sel], y[sel], s=2, alpha=0.6, color=shades[c % 2], rasterized=True)
         offset += cmax
 
-    # YOUR CODE HERE: add genome-wide (5e-8) and suggestive (1e-5) threshold lines
-    ???
+    # Genome-wide (5e-8) and suggestive (1e-5) significance thresholds
+    ax.axhline(-np.log10(5e-8), color='red',    linestyle='--', linewidth=1, label='5×10⁻⁸')
+    ax.axhline(-np.log10(1e-5), color='orange', linestyle='--', linewidth=1, label='1×10⁻⁵')
 
     ax.set_xticks(xticks); ax.set_xticklabels(xlabels, fontsize=7)
     ax.set_xlabel('Chromosome'); ax.set_ylabel(r'$-\\log_{10}(p)$')
@@ -1750,19 +1785,25 @@ def qq_plot(nlog10p, label='', ax=None, color='steelblue'):
     n = len(nlog10p)
 
     # YOUR CODE HERE
-    # Step 1: sort observed -log10(p) ascending (least to most significant)
+    # Step 1: sort observed -log10(p) ascending (least to most significant).
+    #   Use np.sort(nlog10p) — returns a NEW ascending-sorted array (does not sort in place).
     obs = ???
 
     # Step 2: expected -log10(p) for order statistics of Uniform[0,1].
     # The k-th smallest p-value (k=1..n) has expected value k/(n+1);
     # so expected -log10(p) for the k-th LARGEST observed = -log10(k/(n+1)).
+    #   Build the descending counts k = n, n-1, ..., 1 with np.arange(n, 0, -1),
+    #   then apply -np.log10(k / (n + 1)) elementwise (NumPy broadcasts over the array).
     exp = ???   # ascending, same length as obs
 
-    # Step 3: scatter expected (x) vs observed (y)
+    # Step 3: scatter expected (x) vs observed (y) with ax.scatter(x, y).
+    #   Match the style with kwargs: s=2, alpha=0.6, color=color, label=label.
     ???
 
-    # Step 4: add the y=x diagonal, then truncate the x-axis to the max expected value
+    # Step 4: add the y=x diagonal, then truncate the x-axis to the max expected value.
     exp_max = -np.log10(1.0 / (n + 1))
+    #   Draw a line from (0, 0) to (exp_max, exp_max) with
+    #   ax.plot([0, exp_max], [0, exp_max], 'r--', linewidth=1.2, label='y=x (null)').
     ???                                  # plot y=x line up to exp_max
     ax.set_xlim(0, exp_max)              # crop empty whitespace; tail rises in y, not x
 
@@ -1823,7 +1864,7 @@ for t in REAL_TRAITS:
     lam = lambda_gc(real[t]['nlog10p'][real[t]['rand']])
     print(f"Lambda GC — {t:6s}: {lam:.3f}")
 
-print("\\nQ: Height is the most polygenic — how does its lambda_GC compare to CAD?")
+print("\\nQ: BMI is the most polygenic — how does its lambda_GC compare to CAD?")
 print("Q: A high lambda_GC here is driven by true polygenic signal, not stratification.")
 print("   How could you tell the two apart? (hint: LDSC intercept, null/synonymous variants)")
 """
@@ -2134,104 +2175,6 @@ ax.set_xscale('log')
 ax.set_xlabel('MAF (log scale)'); ax.set_ylabel(r'$\\hat{{\\beta}}$')
 ax.set_title('Trumpet plot — real LDL GWAS'); ax.legend(fontsize=8)
 plt.tight_layout(); plt.show()
-"""
-
-S2_CQ4_MD = """\
-### Challenge {N}: Winner's curse — ~15 min
-
-The **winner's curse**: an effect-size estimate for a *discovered* variant is upward-biased,
-because a variant is only declared significant when its estimated effect happens to land large
-enough to cross the threshold. The honest effect is what you measure in an **independent
-validation** sample.
-
-Using the simulated cohort (N=10,000), for each replicate we randomly split into a **5,000
-discovery** half and a disjoint **5,000 validation** half:
-1. Run the discovery GWAS; keep replicates that yield ≥1 genome-wide-significant variant
-   (resample the split until we have 3 such replicates).
-2. For each significant variant, re-estimate its effect **once** in that replicate's validation
-   half.
-3. Scatter discovery vs validation effect sizes across all replicates. Winner's curse shows up
-   as validation effects sitting **closer to zero** than the discovery effects (below the y=x
-   line in magnitude).
-"""
-
-S2_CQ4_STUDENT = """\
-# Winner's curse — discovery vs validation across resampled 5k/5k splits
-rng = np.random.default_rng(0)
-def _covs(idx):
-    return np.column_stack([(age[idx]-age.mean())/age.std(), sex[idx]])
-
-disc_betas, val_betas = [], []
-n_rep, n_attempt = 0, 0
-while n_rep < 3:                         # resample splits until 3 replicates have a hit
-    n_attempt += 1
-    perm = rng.permutation(N)
-    disc, val = perm[:5000], perm[5000:]            # disjoint 5k discovery / 5k validation
-
-    # Discovery GWAS on this 5k half
-    bd, _, pd = run_gwas(y_cont[disc], G_qc[disc], _covs(disc))
-    hits = np.where(pd < 5e-8)[0]
-    if len(hits) == 0:
-        continue                                     # no hit this split — resample
-
-    # YOUR CODE HERE: estimate those hit variants' effects ONCE in the validation half
-    # Hint: run_gwas on just the hit columns, G_qc[:, hits][val]
-    bv, _, _ = run_gwas(???, ???, ???)
-
-    disc_betas.extend(bd[hits]); val_betas.extend(bv)
-    n_rep += 1
-    print(f"  replicate {n_rep}: {len(hits)} hit(s)  (found on attempt {n_attempt})")
-
-disc_betas = np.array(disc_betas); val_betas = np.array(val_betas)
-print(f"Used {n_attempt} resampled splits to get 3 replicates with a hit; "
-      f"{len(disc_betas)} discovery hits total")
-
-lim = np.abs(np.r_[disc_betas, val_betas]).max() * 1.15
-fig, ax = plt.subplots(figsize=(5.5, 5.5))
-ax.scatter(disc_betas, val_betas, s=45, alpha=0.8, color='steelblue', zorder=3)
-ax.plot([-lim, lim], [-lim, lim], 'r--', label='y = x (no bias)')
-ax.axhline(0, color='grey', lw=0.5); ax.axvline(0, color='grey', lw=0.5)
-ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
-ax.set_xlabel('Discovery effect size (5k)'); ax.set_ylabel('Validation effect size (disjoint 5k)')
-ax.set_title("Winner's curse: discovery vs validation"); ax.legend(fontsize=8)
-plt.tight_layout(); plt.show()
-print("Q: Are the validation effects systematically closer to zero than the discovery effects?")
-"""
-
-S2_CQ4_SOL = """\
-rng = np.random.default_rng(0)
-def _covs(idx):
-    return np.column_stack([(age[idx]-age.mean())/age.std(), sex[idx]])
-
-disc_betas, val_betas = [], []
-n_rep, n_attempt = 0, 0
-while n_rep < 3:
-    n_attempt += 1
-    perm = rng.permutation(N)
-    disc, val = perm[:5000], perm[5000:]
-    bd, _, pd = run_gwas(y_cont[disc], G_qc[disc], _covs(disc))
-    hits = np.where(pd < 5e-8)[0]
-    if len(hits) == 0:
-        continue
-    bv, _, _ = run_gwas(y_cont[val], G_qc[:, hits][val], _covs(val))
-    disc_betas.extend(bd[hits]); val_betas.extend(bv)
-    n_rep += 1
-    print(f"  replicate {n_rep}: {len(hits)} hit(s)  (found on attempt {n_attempt})")
-
-disc_betas = np.array(disc_betas); val_betas = np.array(val_betas)
-print(f"Used {n_attempt} resampled splits to get 3 replicates with a hit; "
-      f"{len(disc_betas)} discovery hits total")
-
-lim = np.abs(np.r_[disc_betas, val_betas]).max() * 1.15
-fig, ax = plt.subplots(figsize=(5.5, 5.5))
-ax.scatter(disc_betas, val_betas, s=45, alpha=0.8, color='steelblue', zorder=3)
-ax.plot([-lim, lim], [-lim, lim], 'r--', label='y = x (no bias)')
-ax.axhline(0, color='grey', lw=0.5); ax.axvline(0, color='grey', lw=0.5)
-ax.set_xlim(-lim, lim); ax.set_ylim(-lim, lim)
-ax.set_xlabel('Discovery effect size (5k)'); ax.set_ylabel('Validation effect size (disjoint 5k)')
-ax.set_title("Winner's curse: discovery vs validation"); ax.legend(fontsize=8)
-plt.tight_layout(); plt.show()
-# Validation effects tend to sit closer to zero (below |y=x|) → winner's curse.
 """
 
 S2_MIAMI_MD = """\
@@ -2567,6 +2510,9 @@ def build_session1(answers=False, run=False, nb_path=None):
             cells.append(solution(sol_src))
         return cells
 
+    def qa(text):                       # 'Show answer' dropdown — practical + answers, not run
+        return [] if run else [md(show_answer(text))]
+
     _cqn = [0]
     def chmd(src):                      # auto-number a challenge title cell in build order
         _cqn[0] += 1
@@ -2588,19 +2534,43 @@ def build_session1(answers=False, run=False, nb_path=None):
         code(S1_PROVIDE_GWAS_FN),
         *ex(S1_EX21_STUDENT, S1_EX21_SOL),
         *ex(S1_EX22_STUDENT, S1_EX22_SOL),
+        *qa("Adding the age/sex/ancestry covariates pulls lambda GC back toward 1.0, because "
+            "they soak up the confounding that was inflating the test statistics. A lambda GC "
+            "**> 1.0** means the median association is larger than the null expectation — driven "
+            "either by **confounding** (population stratification, relatedness, batch effects) or "
+            "by genuine **widespread polygenic signal**. On this small simulated cohort the lift "
+            "is confounding, which is exactly what the covariates remove."),
         *ex(S1_EX23_STUDENT, S1_EX23_SOL),
+        *qa("Yes — the heterozygote (AB) mean sits roughly **halfway** between the AA and BB "
+            "homozygote means. Each copy of the effect allele adds about the same increment, which "
+            "is precisely the **additive (per-allele) model** that linear-regression GWAS assumes."),
         md(S1_PART3_MD),
         code(S1_PROVIDE_LOGISTIC_FN),
         *ex(S1_EX31_STUDENT, S1_EX31_SOL),
+        *qa("Largely yes — the top loci overlap, because the binary trait was simulated by "
+            "thresholding a liability built from the **same causal variants**. Dichotomising a "
+            "continuous liability throws away information, so the binary scan has **less power** "
+            "and weaker p-values at those same variants."),
         md(S1_CQ_MD),
-        # Challenge order: encoding → stratification → study design → interpretation
-        #                  → capstone
-        chmd(S1_CQ1_MD),   *ex(S1_CQ1_STUDENT, S1_CQ1_SOL),
+        # Challenge order: stratification → study design → interpretation → capstone
         chmd(S1_CQSEX_MD), *ex(S1_CQSEX_STUDENT, S1_CQSEX_SOL),
+        *qa("The variant with an **opposite-sign (or sex-limited) effect** in males vs females "
+            "lies off the y=x line. Pooling the sexes averages the two opposing effects toward "
+            "zero, so the combined GWAS loses power and can **miss** a hit that a sex-stratified "
+            "analysis recovers."),
         chmd(S1_CQ4_MD),   *ex(S1_CQ4_STUDENT, S1_CQ4_SOL),
+        *qa("Dropping young cases removes **true cases**, shrinking the case count. GWAS power "
+            "scales with the number of cases (and case/control balance), so fewer cases means "
+            "larger standard errors and weaker p-values — even though the underlying effects are "
+            "unchanged."),
         chmd(S1_LZ_MD),    *ex(S1_LZ_STUDENT, S1_LZ_SOL),
+        *qa("Yes — the variants in **high LD (red)** with the lead SNP form the tall tower, "
+            "because they tag the same causal signal. As r² to the lead falls, the association "
+            "decays and p-values rise (smaller −log10 p), giving the classic LD **'skirt'** "
+            "around the peak."),
         chmd(S1_CQ2_MD),
         code(S1_CQ2_STUDENT) if not run else md(""),
+        code(S1_CQ2B_TABLE),
         *ex(S1_CQ2B_STUDENT, S1_CQ2B_SOL),
         *ex(S1_CQ2C_STUDENT, S1_CQ2C_SOL),
         code(S1_CQ2D_STUDENT),                  # Part C is fully provided (book-keeping + plot)
@@ -2617,6 +2587,9 @@ def build_session2(answers=False, run=False, nb_path=None):
             cells.append(solution(sol_src))
         return cells
 
+    def qa(text):                       # 'Show answer' dropdown — practical + answers, not run
+        return [] if run else [md(show_answer(text))]
+
     _cqn = [0]
     def chmd(src):
         _cqn[0] += 1
@@ -2627,19 +2600,56 @@ def build_session2(answers=False, run=False, nb_path=None):
         md(title),
         code(S2_SETUP if (answers or run) else S2_SETUP_STUDENT),
         md(S2_PART1_MD),
-        *ex(S2_EX11_STUDENT, S2_EX11_SOL),
+        code(S2_EX11_STUDENT),          # Manhattan plotting is fully provided (no blanks)
+        *qa("**BMI** is the most polygenic — it shows the most independent towers spread across "
+            "the genome, whereas LDL and CAD concentrate signal at a few large-effect loci "
+            "(e.g. *LDLR*, *APOE*, *9p21*). The more causal variants of small effect a trait has, "
+            "the more separate peaks appear."),
         md(S2_PART2_MD),
         *ex(S2_EX21_STUDENT, S2_EX21_SOL),
         *ex(S2_EX22_STUDENT, S2_EX22_SOL),
+        *qa("BMI's lambda GC is **higher** than CAD's: being more polygenic, a larger fraction of "
+            "the genome carries small true effects, which lifts the median chi-square. That lift "
+            "is **true polygenic signal, not stratification** — you tell them apart with the "
+            "**LDSC intercept** (≈1 under pure polygenicity, >1 under confounding) or by checking "
+            "that null/synonymous variants stay un-inflated."),
         code(S2_NULL_QQ),
         code(S2_PLEIOTROPY),
+        *qa("Yes — the LDL–CAD effect cloud tilts **positive**: variants that raise LDL tend to "
+            "raise CAD risk, reflecting their shared causal pathway. A variant with a large LDL "
+            "effect but **near-zero CAD effect** points to an LDL mechanism that doesn't translate "
+            "into disease risk (or acts through a different pathway) — a caution against assuming "
+            "every biomarker-associated variant is causal for the outcome."),
         md(S2_CQ_MD),
         chmd(S2_CQ1_MD), *ex(S2_CQ1_STUDENT, S2_CQ1_SOL),
+        *qa("BMI's lift-off above the confidence band is **real**, not an artefact: it is the "
+            "signature of a highly polygenic trait, where thousands of true small effects push the "
+            "whole tail above the null line. The near-null trait stays inside the band because it "
+            "has essentially no signal to lift it."),
         chmd(S2_CQ2_MD), *ex(S2_CQ2_STUDENT, S2_CQ2_SOL),
+        *qa("Yes — the **common-variant** MAF bins depart from the diagonal the most, so common "
+            "variants carry the bulk of BMI's detectable association signal. Rare variants have "
+            "less power per variant (smaller allele counts), so their QQ curves sit closer to the "
+            "null line."),
         chmd(S2_CQ3_MD), *ex(S2_CQ3_STUDENT, S2_CQ3_SOL),
-        chmd(S2_CQ4_MD), *ex(S2_CQ4_STUDENT, S2_CQ4_SOL),
+        *qa("The genome-wide-significant hits sit **outside / above the N=400k power band**, as "
+            "expected — you only detect a variant when its effect is large enough for the sample "
+            "size. The **top-left/right corners are empty** because large-effect common variants "
+            "would be under strong selection and are quickly driven rare; common variants survive "
+            "only with small effects (the trumpet's narrowing mouth)."),
         chmd(S2_MIAMI_MD), *ex(S2_MIAMI_STUDENT, S2_MIAMI_SOL), *ex(S2_CSQ_STUDENT, S2_CSQ_SOL),
+        *qa("The red **exome** variants line up with the coding **exons** (boxes), because they are "
+            "protein-coding changes, while the blue **GWAS** variants spread through introns and "
+            "regulatory regions between genes. The largest per-allele effects fall in the "
+            "**predicted loss-of-function (pLoF)** class — nonsense/frameshift/splice variants that "
+            "knock out gene function — followed by missense, because disrupting the protein has a "
+            "bigger consequence than a regulatory tweak."),
         chmd(S2_SIDAK_MD), *ex(S2_SIDAK_STUDENT, S2_SIDAK_SOL),
+        *qa("The Šidák/Bonferroni ratio is largest at **small C** (few tests) and tends to **1** as "
+            "C grows, because for many independent tests (1−α)^(1/C) ≈ 1 − α/C. **Bonferroni is the "
+            "more conservative** (slightly smaller threshold), but the difference is negligible in "
+            "practice — at genome-wide scale (C in the millions) the two corrections are "
+            "essentially identical."),
     ]
     return notebook(cells)
 
@@ -2649,10 +2659,10 @@ def build_session2(answers=False, run=False, nb_path=None):
 S3_TITLE = """\
 # Session 3: Complexities of GWAS — Population Structure & Relatedness
 
-**Timing**: ~60 minutes (Parts 1–4 ~45 min; challenges for fast finishers).
+**Timing**: ≈60 minutes (Parts 1–4 ≈45 min; challenges for fast finishers).
 
-**Dataset**: a simulated **"All of Us"-style** diverse cohort (~2,000 participants) plus a small
-**"1000 Genomes"-style reference panel** (~75 individuals per continental group, with known labels),
+**Dataset**: a simulated **"All of Us"-style** diverse cohort (≈2,000 participants) plus a small
+**"1000 Genomes"-style reference panel** (≈75 individuals per continental group, with known labels),
 each genotyped at 20,000 independent SNPs.
 - `G`        : the diverse cohort we analyse.
 - `G_ref`    : the labelled reference panel (superpopulations AFR, AMR, EAS, EUR, SAS).
@@ -2793,11 +2803,19 @@ genotype_mean = genotypes_all.mean(axis=0)
 genotype_sd   = genotypes_all.std(axis=0) + 1e-8
 Z = (genotypes_all - genotype_mean) / genotype_sd
 
-# Step 3. Economy SVD of Z / sqrt(n_total); the PC scores are the columns of U * S.
+# Step 3. PCA via the SVD. Writing the scaled genotype matrix as
+#             Z / sqrt(n_total) = U @ S_diag @ Vᵀ,
+#         the principal-component SCORES are  PC = U @ S_diag  — each left-singular
+#         vector (column of U) scaled by its singular value.
+#         IMPORTANT: np.linalg.svd returns S as a 1-D array of singular values, NOT the
+#         diagonal matrix S_diag. To do the matrix multiply U @ S_diag you must first turn
+#         that vector into a diagonal matrix yourself.
 n_total = genotypes_all.shape[0]
-# YOUR CODE HERE: fill in the matrix to decompose, and the PC-score formula.
-U, S, Vt = np.linalg.svd(???, full_matrices=False)
-PC = ???                                            # (n_total, k) PC scores = U * S
+U, S, Vt = np.linalg.svd(Z / np.sqrt(n_total), full_matrices=False)
+
+# YOUR CODE HERE: build the diagonal singular-value matrix, then form the PC scores.
+S_diag = ???                                        # hint: np.diag(...) turns the vector S into a diagonal matrix
+PC     = U @ S_diag                                 # (n_total, k) PC scores
 
 # Step 4. Split the PC scores back into reference rows (first) and cohort rows (after).
 PC_ref    = PC[:n_ref]
@@ -2825,7 +2843,8 @@ Z = (genotypes_all - genotype_mean) / genotype_sd
 
 n_total = genotypes_all.shape[0]
 U, S, Vt = np.linalg.svd(Z / np.sqrt(n_total), full_matrices=False)
-PC = U * S
+S_diag = np.diag(S)                                 # 1-D singular values → diagonal matrix
+PC     = U @ S_diag                                 # PC scores = U @ S_diag
 
 PC_ref    = PC[:n_ref]
 PC_cohort = PC[n_ref:]
@@ -2891,7 +2910,9 @@ labels_unique, label_counts = np.unique(assigned_label, return_counts=True)
 print(f"Confidence threshold = {CONFIDENCE_THRESHOLD}")
 for label, count in zip(labels_unique, label_counts):
     print(f"  {label:11s}: {count:5d}  ({100*count/n_cohort:4.1f}%)")
-print("Q: Which groups get assigned confidently, and which get left 'Unassigned'?")
+print("Q: Look at the percentages above — a much larger proportion of SOME groups clears the")
+print("   0.80 confidence threshold than others. Which groups get assigned most confidently,")
+print("   and which individuals are disproportionately left 'Unassigned'?")
 """
 
 S3_EX3_SOL = """\
@@ -2966,10 +2987,17 @@ S3_PART4_MD = """\
 ## Part 4: Correcting stratification with PCs
 
 Including the top PCs as **covariates** soaks up the ancestry signal, so the spurious associations
-disappear and $\\lambda_{GC}$ returns to ~1. Crucially, **true** signal survives — re-run the
+disappear and $\\lambda_{GC}$ returns to ≈1. Crucially, **true** signal survives — re-run the
 clean phenotype `y_clean` (which has real causal variants) and check its hits are still there.
 
 (We use `PC_cohort` — the cohort's own rows of the PCA — as the covariates.)
+
+> **Note — a deliberate simplification.** Pooling *every* ancestry into one GWAS and "fixing" the
+> confounding with a handful of PCs is a **toy** illustration. In real studies we usually run the
+> GWAS **within a single ancestry group** (or separately per group and then meta-analyse), because
+> PCs capture only the broad axes of structure and can leave fine-scale or ancestry-specific
+> confounding behind. We combine everyone here purely to make the stratification — and the PC fix —
+> easy to see in one plot.
 """
 
 S3_EX4_STUDENT = """\
@@ -3139,6 +3167,9 @@ def build_session3(answers=False, run=False, nb_path=None):
             cells.append(solution(sol_src))
         return cells
 
+    def qa(text):                       # 'Show answer' dropdown — practical + answers, not run
+        return [] if run else [md(show_answer(text))]
+
     _cqn = [0]
     def chmd(src):
         _cqn[0] += 1
@@ -3150,17 +3181,49 @@ def build_session3(answers=False, run=False, nb_path=None):
         code(S3_SETUP),
         md(S3_PART1_MD),
         *ex(S3_EX1_STUDENT, S3_EX1_SOL),
+        *qa("Because the phenotype is confounded **purely by ancestry**: allele frequencies differ "
+            "between ancestry groups, and so does the mean phenotype, so any variant whose frequency "
+            "tracks ancestry looks associated even though **no variant is causal**. The 'signal' is "
+            "**population stratification**, not biology — which is exactly what PCs will correct."),
         md(S3_PART2_MD),
         *ex(S3_EX2_STUDENT, S3_EX2_SOL),
+        *qa("The bulk of the cohort sits nearest the reference cluster matching its dominant "
+            "simulated ancestry. Individuals falling **between** reference clusters are most likely "
+            "**admixed** — people with recent ancestry from more than one continental group, who "
+            "land on a line/region between the parental clusters in PC space."),
         md(S3_PART3_MD),
         *ex(S3_EX3_STUDENT, S3_EX3_SOL),
+        *qa("A **larger proportion** of the groups that form tight, well-separated clusters in PC "
+            "space — the continental groups well represented in the reference panel — clear the "
+            "0.80 threshold and get a confident label. Individuals sitting **between clusters** "
+            "(admixed people, or ancestries not represented in the reference panel) get a low "
+            "top-class probability and are disproportionately left **'Unassigned'**. Discrete "
+            "labels are a convenience — ancestry is genuinely continuous, so any hard threshold "
+            "systematically under-serves admixed and under-represented groups."),
         md(S3_PART3B_MD),
         *ex(S3_EX3B_STUDENT, S3_EX3B_SOL),
+        *qa("That the 'Unassigned' points are mostly **admixed** — their genomes are mixtures, so no "
+            "single reference cluster fits well. It is a feature, not a failure: forcing everyone "
+            "into discrete bins would mislabel them, which is why continuous PCs (not hard labels) "
+            "are preferred as GWAS covariates."),
         md(S3_PART4_MD),
         *ex(S3_EX4_STUDENT, S3_EX4_SOL),
+        *qa("Because the **false** signal came from ancestry, and the top PCs capture exactly that "
+            "ancestry axis — conditioning on them removes the stratification confounding. The **real** "
+            "causal variant is associated with the phenotype *within* every ancestry group, so it is "
+            "uncorrelated with the PCs and survives the correction."),
         md(S3_CQ_MD),
         chmd(S3_CQ1_MD), *ex(S3_CQ1_STUDENT, S3_CQ1_SOL),
+        *qa("A stricter assignment threshold drops the **admixed and edge-of-cluster** individuals "
+            "first — disproportionately people of mixed or under-represented ancestry. That raises a "
+            "**fairness** problem: tightening QC for 'clean' ancestry can systematically exclude the "
+            "very groups already under-served by genetics research."),
         chmd(S3_CQ2_MD), *ex(S3_CQ2_STUDENT, S3_CQ2_SOL),
+        *qa("Related individuals share long stretches of genome, so their phenotypes and genotypes "
+            "are **correlated** — the test's assumption of independent samples is violated, which "
+            "inflates the test statistics (a kind of cryptic stratification). **Mixed models** add a "
+            "random effect with a genetic relatedness matrix (GRM) that models this covariance "
+            "structure, deflating the statistics back to calibration while keeping true signal."),
     ]
     return notebook(cells)
 
@@ -3170,9 +3233,9 @@ def build_session3(answers=False, run=False, nb_path=None):
 S4_TITLE = """\
 # Session 4: Fine-mapping
 
-**Timing**: ~60 minutes (Parts 1–3 ~35 min; challenges for fast finishers).
+**Timing**: ≈60 minutes (Parts 1–3 ≈35 min; challenges for fast finishers).
 
-**Dataset**: two simulated GWAS **loci** (~400 variants each, N=5,000) with realistic LD.
+**Dataset**: two simulated GWAS **loci** (≈400 variants each, N=5,000) with realistic LD.
 - Locus A has **one** causal variant hidden in a cluster of near-perfectly-correlated SNPs.
 - Locus B has **two** causal variants.
 
@@ -3592,6 +3655,9 @@ def build_session4(answers=False, run=False, nb_path=None):
             cells.append(solution(sol_src))
         return cells
 
+    def qa(text):                       # 'Show answer' dropdown — practical + answers, not run
+        return [] if run else [md(show_answer(text))]
+
     _cqn = [0]
     def chmd(src):
         _cqn[0] += 1
@@ -3603,14 +3669,37 @@ def build_session4(answers=False, run=False, nb_path=None):
         code(S4_SETUP),
         md(S4_PART1_MD),
         *ex(S4_EX1_STUDENT, S4_EX1_SOL),
+        *qa("All of them — every variant in the LD block around the causal SNP crosses "
+            "genome-wide significance, so naively you'd have to follow up the **whole peak** "
+            "(often dozens to hundreds of variants). That is the problem fine-mapping solves: "
+            "LD makes many non-causal variants look significant."),
         md(S4_PART2_MD),
         *ex(S4_EX2_STUDENT, S4_EX2_SOL),
+        *qa("Because the other peak variants were only significant through **LD with the lead** "
+            "variant — once you condition on (regress out) the lead, the signal they were "
+            "borrowing disappears and their p-values collapse. This is evidence the locus holds a "
+            "**single** causal signal that the lead variant tags."),
         md(S4_PART3_MD),
         *ex(S4_EX3_STUDENT, S4_EX3_SOL),
+        *qa("Fine-mapping cuts the peak down to a **handful** of variants — the 95% credible set, "
+            "often just a few SNPs that together capture 95% of the posterior probability of being "
+            "causal. It turns 'hundreds of significant variants' into a short, follow-up-able list."),
         md(S4_CQ_MD),
         chmd(S4_CQ1_MD), *ex(S4_CQ1_STUDENT, S4_CQ1_SOL),
+        *qa("Those few variants have the **highest posterior inclusion probability (PIP)** because "
+            "they best explain the observed association pattern given the LD structure — they sit "
+            "closest to the causal variant and aren't fully redundant with a stronger neighbour. "
+            "The rest are explained away as LD partners."),
         chmd(S4_CQ2_MD), *ex(S4_CQ2_STUDENT, S4_CQ2_SOL),
+        *qa("A smaller sample gives **noisier effect estimates**, so the data can't distinguish the "
+            "causal variant from its LD neighbours as sharply — the posterior probability spreads "
+            "across more variants, inflating the credible set. More samples sharpen the signal and "
+            "shrink the set."),
         chmd(S4_CQ3_MD), *ex(S4_CQ3_STUDENT, S4_CQ3_SOL),
+        *qa("A single-causal-variant assumption can't represent **two** independent signals: it "
+            "tries to explain both with one variant, often landing on a compromise variant that is "
+            "causal for neither, or missing one signal entirely. You need a multi-causal method "
+            "(e.g. SuSiE / FINEMAP with several allowed signals) to recover both credible sets."),
     ]
     return notebook(cells)
 
@@ -3620,16 +3709,14 @@ def build_session4(answers=False, run=False, nb_path=None):
 if __name__ == "__main__":
     BASE = os.path.dirname(os.path.abspath(__file__))
     print("Generating notebooks...")
-    save(build_session1(answers=False, nb_path="session1/practical.ipynb"), os.path.join(BASE, "session1", "practical.ipynb"))
-    save(build_session1(answers=True,  nb_path="session1/answers.ipynb"),   os.path.join(BASE, "session1", "answers.ipynb"))
-    save(build_session1(run=True,      nb_path="session1/run.ipynb"),       os.path.join(BASE, "session1", "run.ipynb"))
-    save(build_session2(answers=False, nb_path="session2/practical.ipynb"), os.path.join(BASE, "session2", "practical.ipynb"))
-    save(build_session2(answers=True,  nb_path="session2/answers.ipynb"),   os.path.join(BASE, "session2", "answers.ipynb"))
-    save(build_session2(run=True,      nb_path="session2/run.ipynb"),       os.path.join(BASE, "session2", "run.ipynb"))
-    save(build_session3(answers=False, nb_path="session3/practical.ipynb"), os.path.join(BASE, "session3", "practical.ipynb"))
-    save(build_session3(answers=True,  nb_path="session3/answers.ipynb"),   os.path.join(BASE, "session3", "answers.ipynb"))
-    save(build_session3(run=True,      nb_path="session3/run.ipynb"),       os.path.join(BASE, "session3", "run.ipynb"))
-    save(build_session4(answers=False, nb_path="session4/practical.ipynb"), os.path.join(BASE, "session4", "practical.ipynb"))
-    save(build_session4(answers=True,  nb_path="session4/answers.ipynb"),   os.path.join(BASE, "session4", "answers.ipynb"))
-    save(build_session4(run=True,      nb_path="session4/run.ipynb"),       os.path.join(BASE, "session4", "run.ipynb"))
-    print("Done. 12 notebooks written.")
+    # practical.ipynb carries the student exercises PLUS revealable solution/answer cells;
+    # run.ipynb is the fully-solved, executable instructor version. (No separate answers.ipynb.)
+    save(build_session1(answers=True, nb_path="session1/practical.ipynb"), os.path.join(BASE, "session1", "practical.ipynb"))
+    save(build_session1(run=True,     nb_path="session1/run.ipynb"),       os.path.join(BASE, "session1", "run.ipynb"))
+    save(build_session2(answers=True, nb_path="session2/practical.ipynb"), os.path.join(BASE, "session2", "practical.ipynb"))
+    save(build_session2(run=True,     nb_path="session2/run.ipynb"),       os.path.join(BASE, "session2", "run.ipynb"))
+    save(build_session3(answers=True, nb_path="session3/practical.ipynb"), os.path.join(BASE, "session3", "practical.ipynb"))
+    save(build_session3(run=True,     nb_path="session3/run.ipynb"),       os.path.join(BASE, "session3", "run.ipynb"))
+    save(build_session4(answers=True, nb_path="session4/practical.ipynb"), os.path.join(BASE, "session4", "practical.ipynb"))
+    save(build_session4(run=True,     nb_path="session4/run.ipynb"),       os.path.join(BASE, "session4", "run.ipynb"))
+    print("Done. 8 notebooks written.")

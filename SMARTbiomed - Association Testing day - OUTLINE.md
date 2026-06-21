@@ -68,15 +68,14 @@ MORNING (Nik)
     - Continuous trait `y_cont`: low h² (≈0.035), spike-and-slab with only **3** causal variants, MAF-dependent effect sizes (no large-effect common variants), plus one injected **dominant** and one **recessive** locus. Flip effect in one causal SNP between sexes, to simulate sex-specific effect.
     - Dichotomous trait `y_bin`: liability-threshold model on `y_cont`, ~10% prevalence (90th percentile).
     - Third trait `y_poly`: fully polygenic, very low h² (≈0.02), **uncorrelated** with `y_cont` (used in Session 2 null-QQ contrast).
-    - Covariates: UKB-like age distribution (decile-interpolated, ~37–73) and sex.
-  - Main exercises: plot phenotype/covariate distributions; missingness/MAF/HWE QC (a HWE mid-p test is provided); run linear & logistic GWAS; interpret effect sizes.
-  - Challenge questions (auto-numbered, time-tagged; order = encoding → study design → interpretation → capstone):
-    1. **Dominant / recessive encodings** (~10 min): re-encode genotype 0/1/2 → dominant/recessive and re-run GWAS to recover the two injected non-additive loci.
-    2. **Sex-stratified GWAS** (~10 min): run GWAS separately in males and females; find the sign-flipped sex-specific locus.
-    3. **Ascertainment by age of onset** (~10 min): turn all `y_bin` cases younger than 60 into controls and watch the hits change.
-    4. **Manual LocusZoom** (~12 min): r²-coloured regional plot on the simulated cohort (where individual genotypes allow LD colouring).
-    5. **Drosophila linkage analysis** (~25 min): as Sturtevant (1913) — determine which traits are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly columns are deliberately renamed so the linkage isn't given away; `data/fly_data.csv`. Provide ground-truth cM, the fiddly helpers (`unravel_index`, `fill_diagonal`), the ends-of-sequence hint, Haldane's map function, and a provided function to plot the **estimated vs true gene order**.
-    - *(The PGS / genetic-component challenge was dropped — the low-h², 3-causal data is too sparse for an instructive prediction exercise. The HWE chi-squared-vs-mid-p challenge was also removed; HWE QC stays in the main exercises.)*
+    - Covariates: UKB-like age distribution (decile-interpolated, ~37–73) and sex. **Age also drives a genome-wide allele-frequency gradient** (mild age-correlated stratification), so an unadjusted GWAS is genomically inflated — adjusting for age corrects it.
+  - Main exercises: plot phenotype/covariate distributions; missingness/MAF/HWE QC (a HWE mid-p test is provided); run linear & logistic GWAS with/without covariates (**λ_GC ≈ 1.10 unadjusted → ≈ 1.0 once age/sex are included**, showing covariates control stratification); interpret effect sizes.
+  - Challenge questions (auto-numbered, time-tagged; order = study design → interpretation → capstone):
+    1. **Sex-stratified GWAS** (~10 min): run GWAS separately in males and females; find the sign-flipped sex-specific locus.
+    2. **Ascertainment by age of onset** (~10 min): turn all `y_bin` cases younger than 60 into controls and watch the hits change.
+    3. **Manual LocusZoom** (~12 min): r²-coloured regional plot on the simulated cohort (where individual genotypes allow LD colouring).
+    4. **Drosophila linkage analysis** (~25 min): as Sturtevant (1913) — determine which traits are X-linked (sex-frequency difference), then order 6 genes by recombination frequency. Fly columns are deliberately renamed so the linkage isn't given away; `data/fly_data.csv`. Provide ground-truth cM, the fiddly helpers (`unravel_index`, `fill_diagonal`), the ends-of-sequence hint, Haldane's map function, and a provided function to plot the **estimated vs true gene order**.
+    - *(The PGS / genetic-component challenge was dropped — the low-h², 3-causal data is too sparse for an instructive prediction exercise. The HWE chi-squared-vs-mid-p challenge was also removed; HWE QC stays in the main exercises. The dominant/recessive-encoding challenge was dropped as well — the data still contains the two injected non-additive loci, just no longer surfaced as an exercise.)*
     
 
 **Session 2: Interpreting GWAS**
@@ -131,6 +130,7 @@ MORNING (Nik)
     4. **Winner's curse** (~15 min): resample a **5k discovery** cohort until 3 replicates each have a hit, validate those hits in a **disjoint 5k** sample, scatter discovery vs validation effect sizes (regression to the mean).
     5. **GWAS × exome Miami plot** (~12 min): single-chromosome Miami (default chr16) of the Pan-UKB common-variant GWAS (up) vs the Genebass exome single-variant results (down) for BMI — noting the **GRCh37 vs GRCh38** build mismatch (no liftover) — then compare effect sizes of significant exome variants by **consequence** (synonymous < missense < pLoF).
     6. **Bonferroni vs Šidák** (~8 min): solve per-test α from the family-wise rate for C tests, Šidák `1−(1−α)^(1/C)` vs Bonferroni `α/C`, and plot their **ratio across a range of C** (largest at small C, → 1 as C grows). (Abdi 2007.)
+  - Other ideas: Show false positive rates as a function of number of tests for independent tests, and test with varying levels of correlation. Also show Bonferroni threshold relative to that. Let students test different levels of correlation to see that higher correlation makes the threshold more conservative.
   - *(The Manual LocusZoom plot moved to Session 1, where individual genotypes allow r² colouring. The GWAS-Catalog REST-API challenge was retired in favour of the Genebass exome challenge above.)*
 
 AFTERNOON (Pier)

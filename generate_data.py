@@ -30,6 +30,8 @@ SEED     = 2026
 CHROM    = 1        # chromosome label (any non-weird autosome; chr6 excluded due to HLA)
 N        = 10_000   # synthetic individuals
 M_RAW    = 52_500   # variants before QC (~50k post-QC; keeps gwas_data.npz < 100 MB)
+STRAT    = 0.009    # age-correlated stratification strength (genome-wide AF gradient ∝ age).
+                    # Tuned so λ_GC ≈ 1.1 without covariates and ≈ 1.0 once age is adjusted for.
 START_KBP =  1_000  # region start (kbp)
 END_KBP   = 250_000 # region end   (kbp)  — chr1 is ~248 Mb
 
@@ -42,12 +44,23 @@ DATA_DIR.mkdir(exist_ok=True)
 
 def make_genotypes(n_samples=N, n_vars=M_RAW, chrom=CHROM,
                    start_kbp=START_KBP, end_kbp=END_KBP,
-                   block_size=50, ld_alpha=0.80, seed=SEED):
+                   block_size=50, ld_alpha=0.80, seed=SEED,
+                   strat=None, strat_strength=0.0):
     """
     Generate a synthetic diploid genotype matrix with block-LD structure.
 
     Within each block of `block_size` variants, haplotypes share a common
     ancestor allele with probability `ld_alpha`, producing pairwise r² ≈ ld_alpha².
+
+    Population stratification (optional)
+    ------------------------------------
+    If `strat` (a per-sample standardised confounder, here standardised age) and
+    `strat_strength > 0` are supplied, each LD block is given a random ancestry
+    loading and its shared-ancestor allele frequency is shifted by
+    `loading · strat_i`. This induces a genome-wide allele-frequency gradient that
+    is correlated with the confounder across (almost) all variants — i.e. realistic
+    population structure. Because the confounder is exactly age, adjusting the GWAS
+    for age fully removes the resulting λ_GC inflation.
 
     Returns
     -------
@@ -65,14 +78,26 @@ def make_genotypes(n_samples=N, n_vars=M_RAW, chrom=CHROM,
     maf = rng.beta(0.5, 2.0, n_vars) * 0.45 + 0.05
 
     # Generate 2*n_samples haplotypes with block-LD
-    n_haps = 2 * n_samples
+    n_haps  = 2 * n_samples
+    n_blocks = (n_vars - 1) // block_size + 1
     H = np.zeros((n_haps, n_vars), dtype=np.int8)
 
-    for b in range((n_vars - 1) // block_size + 1):
+    # Per-block ancestry loadings → age-correlated allele-frequency gradient.
+    # Both haplotypes of a sample share that sample's confounder value.
+    if strat is not None and strat_strength > 0:
+        a_hap  = np.concatenate([strat, strat]).astype(float)        # (n_haps,)
+        bload  = rng.standard_normal(n_blocks) * strat_strength      # (n_blocks,)
+    else:
+        a_hap  = np.zeros(n_haps)
+        bload  = np.zeros(n_blocks)
+
+    for b in range(n_blocks):
         s = b * block_size
         e = min(s + block_size, n_vars)
         avg_maf = maf[s:e].mean()
-        anc = (rng.random(n_haps) < avg_maf).astype(np.int8)   # shared block ancestor
+        # Shared block ancestor: frequency shifted by this block's ancestry loading × age
+        anc_p = np.clip(avg_maf + bload[b] * a_hap, 0.005, 0.995)    # (n_haps,)
+        anc   = (rng.random(n_haps) < anc_p).astype(np.int8)
         mix  = rng.random((n_haps, e - s)) < ld_alpha
         indp = (rng.random((n_haps, e - s)) < maf[None, s:e]).astype(np.int8)
         H[:, s:e] = np.where(mix, anc[:, None], indp)
@@ -183,7 +208,24 @@ def make_spike_slab_betas(maf, p_causal=0.0002, seed=SEED, arch_alpha=0.75):
 
 # ─── Phenotype simulation ─────────────────────────────────────────────────────
 
-def simulate_phenotypes(G_qc, true_betas, seed=SEED):
+def make_covariates(n_samples=N, seed=SEED):
+    """
+    Draw age and sex, independent of one another.
+
+    Age: UKB age-at-recruitment distribution (Instance 0; range 37–73, median 58,
+    mean ≈ 56.5, sd ≈ 8.1). Quantile interpolation through the observed decile values.
+    Age additionally drives the genome-wide stratification gradient in make_genotypes,
+    so it is generated up front (before genotypes).
+    """
+    rng = np.random.default_rng(seed)
+    _p   = [0, .10, .20, .30, .40, .50, .60, .70, .80, .90, 1.0]
+    _age = [37, 44,  48,  52,  55,  58,  60,  62,  64,  67,  73]
+    age  = np.interp(rng.uniform(0, 1, n_samples), _p, _age)
+    sex  = rng.binomial(1, 0.5, n_samples).astype(np.int8)
+    return age, sex
+
+
+def simulate_phenotypes(G_qc, true_betas, age, sex, seed=SEED):
     """
     Simulate continuous and binary phenotypes from QC-passed genotypes.
 
@@ -193,18 +235,14 @@ def simulate_phenotypes(G_qc, true_betas, seed=SEED):
     sexes) for the sex-stratified GWAS challenge.
     Binary: liability threshold at the 90th percentile (~10% cases).
 
-    Returns y_cont, y_poly, y_bin, age, sex, dom_idx, rec_idx, sexspec_idx.
+    `age` is also the confounder behind the genome-wide stratification gradient
+    (see make_genotypes), so omitting it from the GWAS inflates λ_GC while
+    adjusting for it restores calibration.
+
+    Returns y_cont, y_poly, y_bin, dom_idx, rec_idx, sexspec_idx.
     """
     rng = np.random.default_rng(seed)
     N, M = G_qc.shape
-
-    # Covariates first (sex is needed for the sex-specific genetic effect below).
-    # Age: UKB age-at-recruitment distribution (Instance 0; range 37–73, median 58,
-    # mean ≈ 56.5, sd ≈ 8.1). Quantile interpolation through the observed decile values.
-    _p   = [0, .10, .20, .30, .40, .50, .60, .70, .80, .90, 1.0]
-    _age = [37, 44,  48,  52,  55,  58,  60,  62,  64,  67,  73]
-    age  = np.interp(rng.uniform(0, 1, N), _p, _age)
-    sex = rng.binomial(1, 0.5, N).astype(np.int8)
 
     G_std = (G_qc - G_qc.mean(0)) / (G_qc.std(0) + 1e-8)
     genetic = G_std @ true_betas
@@ -271,7 +309,7 @@ def simulate_phenotypes(G_qc, true_betas, seed=SEED):
     print(f"  Sex-specific locus: G_qc col {sexspec_idx} "
           f"(MAF {min(af_qc[sexspec_idx], 1-af_qc[sexspec_idx]):.2f}, "
           f"effect sign-flipped between sexes)")
-    return y_cont, y_poly, y_bin, age, sex, dom_idx, rec_idx, sexspec_idx
+    return y_cont, y_poly, y_bin, dom_idx, rec_idx, sexspec_idx
 
 
 # ─── Drosophila cross dataset ─────────────────────────────────────────────────
@@ -344,8 +382,13 @@ def main():
 
     # ── 1. Generate synthetic genotypes ──────────────────────────────────────
     print(f"\n[1/4] Generating block-LD genotypes (fully simulated)")
+    # Covariates first: age drives an age-correlated stratification gradient in the
+    # genotypes, so omitting age from the GWAS inflates λ_GC (adjusting for it fixes it).
+    age, sex = make_covariates(n_samples=N, seed=SEED)
+    age_strat = (age - age.mean()) / age.std()
     bim, G = make_genotypes(n_samples=N, n_vars=M_RAW, chrom=CHROM,
-                            start_kbp=START_KBP, end_kbp=END_KBP, seed=SEED)
+                            start_kbp=START_KBP, end_kbp=END_KBP, seed=SEED,
+                            strat=age_strat, strat_strength=STRAT)
     maf_raw = np.minimum(G.mean(0).astype(float) / 2,
                          1 - G.mean(0).astype(float) / 2)
 
@@ -377,8 +420,8 @@ def main():
     G_qc = np.where(np.isnan(G_raw[:, qc_pass]), 0, G_raw[:, qc_pass])
     true_betas_raw = make_spike_slab_betas(maf_raw, p_causal=3/M_RAW, seed=SEED)
     true_betas_qc  = true_betas_raw[qc_pass]
-    y_cont, y_poly, y_bin, age, sex, dom_idx_qc, rec_idx_qc, sexspec_idx_qc = \
-        simulate_phenotypes(G_qc, true_betas_qc, seed=SEED)
+    y_cont, y_poly, y_bin, dom_idx_qc, rec_idx_qc, sexspec_idx_qc = \
+        simulate_phenotypes(G_qc, true_betas_qc, age, sex, seed=SEED)
 
     # ── 4. Save ──────────────────────────────────────────────────────────────
     print(f"\n[4/4] Saving")
