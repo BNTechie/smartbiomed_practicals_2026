@@ -63,7 +63,7 @@ automatically (no manual download needed).
 ## Running locally
 
 ```bash
-pip install numpy scipy pandas matplotlib scikit-learn jupyter
+pip install numpy scipy pandas matplotlib scikit-learn seaborn jupyter
 jupyter notebook session1/practical.ipynb
 ```
 
@@ -81,7 +81,7 @@ With Git LFS installed, `git clone` fetches them; otherwise the notebooks downlo
 | `fetch_sumstats.py` | Download + thin the real Pan-UKB LDL/CAD/BMI sumstats → `data/sumstats_real.npz`. |
 | `generate_pca_data.py` | Simulate Session 3 structured-population data → `data/pca_data.npz`. |
 | `generate_finemap_data.py` | Simulate Session 4 fine-mapping loci → `data/finemap_data.npz`. |
-| `create_notebooks.py` | Build all twelve notebooks from the shared source. |
+| `create_notebooks.py` | Build all eight notebooks (`practical` + `run` × 4 sessions) from the shared source. |
 
 ```bash
 python generate_data.py          # Session 1/2 simulated data
@@ -89,6 +89,19 @@ python fetch_sumstats.py         # real Pan-UKB sumstats (streams ~7 GB, writes 
 python generate_pca_data.py      # Session 3 data
 python generate_finemap_data.py  # Session 4 data
 python create_notebooks.py       # (re)build the notebooks
+```
+
+`create_notebooks.py` writes the `run.ipynb` files with **empty outputs**. To regenerate their
+plots/printouts, execute them in place. Use a kernel whose interpreter has all dependencies
+(numpy/scipy/pandas/matplotlib/**scikit-learn**/**seaborn**) — e.g. a `venv`-backed kernel named
+`venvk` — because the default `python3` kernel may point at a system Python missing some of them:
+
+```bash
+for s in session1 session2 session3 session4; do
+  jupyter nbconvert --to notebook --execute --inplace \
+    --ExecutePreprocessor.kernel_name=venvk \
+    --ExecutePreprocessor.timeout=600 "$s/run.ipynb"
+done
 ```
 
 Data sources: [Pan-UKB](https://pan.ukbb.broadinstitute.org/) summary statistics (EUR).
